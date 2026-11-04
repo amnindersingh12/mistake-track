@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { MistakeEntry, MockTest, ExamSettings, ResultType, Difficulty, MistakeStatus } from '../types';
+import { MistakeEntry, MockTest, PaperTest, ExamSettings, ResultType, Difficulty, MistakeStatus } from '../types';
 import { db } from '../db/db';
 import { exportMistakesAsCsv } from '../utils/exportImport';
+import { getTodayDateStr } from '../utils/srs';
 import { Mascot } from './Mascot';
+import { ScreenshotInput } from './ScreenshotInput';
 import {
   Plus,
   Zap,
@@ -19,6 +21,7 @@ import {
 interface MistakesViewProps {
   mistakes: MistakeEntry[];
   mocks: MockTest[];
+  papers?: PaperTest[];
   settings: ExamSettings;
   onRefresh: () => void;
   isQuickAddOpenDirectly?: boolean;
@@ -29,6 +32,7 @@ interface MistakesViewProps {
 export const MistakesView: React.FC<MistakesViewProps> = ({
   mistakes,
   mocks,
+  papers = [],
   settings,
   onRefresh,
   isQuickAddOpenDirectly = false,
@@ -85,7 +89,9 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
 
   // Form State
   const defaultMock = mocks[mocks.length - 1] || mocks[0];
-  const [selectedMockId, setSelectedMockId] = useState<number>(defaultMock?.id || 1);
+  const defaultSource = defaultMock?.id ? `mock:${defaultMock.id}` : 'unlinked';
+  const [sourceValue, setSourceValue] = useState<string>(defaultSource);
+  const [resetReviewSchedule, setResetReviewSchedule] = useState(false);
   const [sectionId, setSectionId] = useState<string>(settings.sections[0]?.id || 'quant');
   const [topic, setTopic] = useState<string>('');
   const [subtopic, setSubtopic] = useState<string>('');
@@ -148,7 +154,8 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
 
   const openFullAdd = () => {
     setEditingMistakeId(null);
-    setSelectedMockId(mocks[mocks.length - 1]?.id || 1);
+    setSourceValue(mocks[mocks.length - 1]?.id ? `mock:${mocks[mocks.length - 1].id}` : 'unlinked');
+    setResetReviewSchedule(false);
     const sec = settings.sections[0]?.id || 'quant';
     setSectionId(sec);
     setTopic(settings.sections[0]?.topics[0] || 'Percentage');
@@ -173,7 +180,8 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
 
   const openEdit = (m: MistakeEntry) => {
     setEditingMistakeId(m.id || null);
-    setSelectedMockId(m.mockId || 1);
+    setSourceValue(m.paperId ? `paper:${m.paperId}` : m.mockId ? `mock:${m.mockId}` : 'unlinked');
+    setResetReviewSchedule(false);
     setSectionId(m.sectionId);
     setTopic(m.topic);
     setSubtopic(m.subtopic || '');
@@ -197,13 +205,21 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
 
   const handleSaveFullMistake = async (e: React.FormEvent) => {
     e.preventDefault();
-    const mock = mocks.find((mk) => mk.id === Number(selectedMockId)) || mocks[0];
+    const [sourceType, sourceRawId] = sourceValue.split(':');
+    const sourceId = Number(sourceRawId);
+    const mock = sourceType === 'mock' ? mocks.find((mk) => mk.id === sourceId) : undefined;
+    const paper = sourceType === 'paper' ? papers.find((p) => p.id === sourceId) : undefined;
     const secConfig = settings.sections.find((s) => s.id === sectionId) || settings.sections[0];
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getTodayDateStr();
+    const existing = editingMistakeId ? mistakes.find((m) => m.id === editingMistakeId) : undefined;
+    const preserveReview = Boolean(existing && !resetReviewSchedule);
 
     const payload: Omit<MistakeEntry, 'id'> = {
-      mockId: mock?.id || 1,
-      mockName: mock?.name || 'Mock Test',
+      mockId: mock?.id,
+      paperId: paper?.id,
+      mockName: paper
+        ? `${paper.examName} (${paper.year})`
+        : mock?.name || 'External / unlinked',
       sectionId,
       sectionName: secConfig?.name || 'Quantitative Aptitude',
       topic: topic || secConfig?.topics[0] || 'General',
@@ -214,7 +230,7 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
       myAnswer: myAnswer.trim() || 'N/A',
       correctAnswer: correctAnswer.trim() || 'N/A',
       resultType,
-      errorTypes: selectedErrorTypes.length > 0 ? selectedErrorTypes : ['Concept gap'],
+      errorTypes: selectedErrorTypes.length > 0 ? selectedErrorTypes : ['Unclassified'],
       timeSpentSeconds: Number(timeSpentSeconds) || 60,
       idealTimeSeconds: Number(idealTimeSeconds) || 35,
       whatWentWrong: whatWentWrong.trim() || 'Mistake logged for revision.',
@@ -223,12 +239,13 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
       ruleToRemember: ruleToRemember.trim() || 'Carefully re-read problem statements.',
       difficulty,
       tags: ['user-logged'],
-      status,
-      interval: status === 'Mastered' ? 30 : 1,
-      consecutiveCorrect: status === 'Mastered' ? 3 : 0,
-      nextReviewDate: todayStr,
-      history: [],
-      createdAt: todayStr
+      status: preserveReview ? existing!.status : status,
+      interval: preserveReview ? existing!.interval : status === 'Mastered' ? 30 : 1,
+      consecutiveCorrect: preserveReview ? existing!.consecutiveCorrect : status === 'Mastered' ? 3 : 0,
+      lastReviewedAt: preserveReview ? existing!.lastReviewedAt : undefined,
+      nextReviewDate: preserveReview ? existing!.nextReviewDate : todayStr,
+      history: preserveReview ? existing!.history : [],
+      createdAt: preserveReview ? existing!.createdAt : todayStr
     };
 
     if (editingMistakeId) {
@@ -253,11 +270,11 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
     e.preventDefault();
     const mock = mocks[mocks.length - 1] || mocks[0];
     const secConfig = settings.sections.find((s) => s.id === quickSectionId) || settings.sections[0];
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getTodayDateStr();
 
     const payload: Omit<MistakeEntry, 'id'> = {
-      mockId: mock?.id || 1,
-      mockName: mock?.name || 'Mock Test',
+      mockId: mock?.id,
+      mockName: mock?.name || 'External / unlinked',
       sectionId: quickSectionId,
       sectionName: secConfig?.name || 'Section',
       topic: quickTopic,
@@ -266,7 +283,7 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
       myAnswer: 'Marked wrong',
       correctAnswer: 'Correct option',
       resultType: quickResultType,
-      errorTypes: quickErrorTypes.length > 0 ? quickErrorTypes : ['Calculation mistake'],
+      errorTypes: quickErrorTypes.length > 0 ? quickErrorTypes : ['Unclassified'],
       timeSpentSeconds: 60,
       idealTimeSeconds: 35,
       whatWentWrong: 'Quick logged.',
@@ -469,7 +486,7 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
                     </span>
                   </div>
                   <p className="text-[11px] text-[var(--text-muted)] font-mono">
-                    From: {m.mockName} • Spent {m.timeSpentSeconds}s (Ideal: {m.idealTimeSeconds}s)
+                    From: {m.mockId || m.paperId ? m.mockName : 'External / unlinked'} • Spent {m.timeSpentSeconds}s (Ideal: {m.idealTimeSeconds}s)
                   </p>
                 </div>
 
@@ -654,6 +671,28 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
             </div>
 
             <form onSubmit={handleSaveFullMistake} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold mb-1">Linked Source</label>
+                <select
+                  aria-label="Mistake source"
+                  value={sourceValue}
+                  onChange={(e) => setSourceValue(e.target.value)}
+                  className="w-full p-2 rounded-lg bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold"
+                >
+                  <option value="unlinked">External / unlinked</option>
+                  {mocks.map((mock) => (
+                    <option key={`mock-${mock.id}`} value={`mock:${mock.id}`}>
+                      Mock: {mock.name}
+                    </option>
+                  ))}
+                  {papers.map((paper) => (
+                    <option key={`paper-${paper.id}`} value={`paper:${paper.id}`}>
+                      Paper: {paper.examName} ({paper.year})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block font-bold mb-1">Section</label>
@@ -706,18 +745,7 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
                   placeholder="Type question statement or paste screenshot with Cmd+V..."
                   className="w-full p-2.5 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-medium"
                 />
-                {questionImage && (
-                  <div className="relative inline-block border-2 border-[var(--ink-border)] rounded-lg overflow-hidden mt-2 max-w-xs">
-                    <img src={questionImage} alt="Pasted Screenshot" className="max-h-36 object-contain" />
-                    <button
-                      type="button"
-                      onClick={() => setQuestionImage(undefined)}
-                      className="absolute top-1 right-1 p-1 rounded-full bg-black/70 text-white hover:bg-rose-600"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                )}
+                <ScreenshotInput value={questionImage} onChange={setQuestionImage} />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -779,6 +807,19 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
                   />
                 </div>
               </div>
+
+              {editingMistakeId && (
+                <label className="flex items-center gap-2 p-2.5 rounded-lg bg-[var(--bg-surface)] border border-[var(--ink-border)]">
+                  <input
+                    type="checkbox"
+                    aria-label="Reset review schedule"
+                    checked={resetReviewSchedule}
+                    onChange={(e) => setResetReviewSchedule(e.target.checked)}
+                    className="accent-[var(--sakura)]"
+                  />
+                  <span className="font-semibold">Reset review schedule and history</span>
+                </label>
+              )}
 
               <div className="flex justify-end gap-2 pt-2 border-t-2 border-[var(--ink-border)]">
                 <button

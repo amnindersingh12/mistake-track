@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { MockTest, ExamSettings, SectionPerformance, AttemptType } from '../types';
 import { db } from '../db/db';
+import { getTodayDateStr } from '../utils/srs';
+import { validateMockSections, MockValidationErrors } from '../utils/mockValidation';
 import { Mascot } from './Mascot';
 import {
   Plus,
@@ -33,11 +35,12 @@ export const MocksView: React.FC<MocksViewProps> = ({
   const [editingMockId, setEditingMockId] = useState<number | null>(null);
   const [compareMockIds, setCompareMockIds] = useState<[number | null, number | null]>([null, null]);
   const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<MockValidationErrors>({});
 
   // Form State
   const defaultMockName = `Testbook Mock ${String(mocks.length + 1).padStart(2, '0')}`;
   const [name, setName] = useState(defaultMockName);
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(getTodayDateStr());
   const [source, setSource] = useState('Testbook');
   const [attemptType, setAttemptType] = useState<AttemptType>('mock');
   const [overallRank, setOverallRank] = useState<string>('');
@@ -68,7 +71,7 @@ export const MocksView: React.FC<MocksViewProps> = ({
   const openAddModal = () => {
     setEditingMockId(null);
     setName(`Testbook Mock ${String(mocks.length + 1).padStart(2, '0')}`);
-    setDate(new Date().toISOString().split('T')[0]);
+    setDate(getTodayDateStr());
     setSource('Testbook');
     setAttemptType('mock');
     setOverallRank('');
@@ -115,6 +118,7 @@ export const MocksView: React.FC<MocksViewProps> = ({
   };
 
   const handleSectionInputChange = (index: number, field: keyof SectionFormState, val: string) => {
+    setValidationErrors({});
     const next = [...sectionInputs];
     next[index] = { ...next[index], [field]: val };
 
@@ -180,6 +184,23 @@ export const MocksView: React.FC<MocksViewProps> = ({
 
   const handleSubmitMock = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const errors = validateMockSections(
+      sectionInputs.map((input) => {
+        const section = settings.sections.find((s) => s.id === input.sectionId);
+        return {
+          sectionId: input.sectionId,
+          sectionName: input.sectionName,
+          attempted: Number(input.attempted) || 0,
+          correct: Number(input.correct) || 0,
+          wrong: Number(input.wrong) || 0,
+          timeMinutes: Number(input.timeMinutes) || 0,
+          totalQuestions: section?.totalQuestions || 0
+        };
+      })
+    );
+    setValidationErrors(errors);
+    if (Object.keys(errors).length > 0) return;
 
     const mockPayload: Omit<MockTest, 'id'> = {
       name: name.trim() || defaultMockName,
@@ -451,6 +472,11 @@ export const MocksView: React.FC<MocksViewProps> = ({
             </div>
 
             <form onSubmit={handleSubmitMock} className="space-y-4 text-xs">
+              {Object.keys(validationErrors).length > 0 && (
+                <div role="alert" className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border-2 border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-semibold">
+                  Fix the highlighted section values before saving.
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div className="sm:col-span-2">
                   <label className="block font-bold mb-1">Mock Name</label>
@@ -538,41 +564,57 @@ export const MocksView: React.FC<MocksViewProps> = ({
                           <label className="text-[10px] text-[var(--text-muted)] block">Attempted</label>
                           <input
                             type="number"
+                            aria-label={`${input.sectionName} attempted`}
                             value={input.attempted}
                             onChange={(e) => handleSectionInputChange(idx, 'attempted', e.target.value)}
                             placeholder="0"
-                            className="w-full p-1.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--ink-border)] font-semibold"
+                            className={`w-full p-1.5 rounded-lg bg-[var(--bg-panel)] border font-semibold ${validationErrors[`${input.sectionId}.attempted`] ? 'border-rose-500' : 'border-[var(--ink-border)]'}`}
                           />
+                          {validationErrors[`${input.sectionId}.attempted`] && (
+                            <span className="text-[10px] text-rose-600 dark:text-rose-400 block mt-0.5">{validationErrors[`${input.sectionId}.attempted`]}</span>
+                          )}
                         </div>
                         <div>
                           <label className="text-[10px] text-[var(--text-muted)] block">Correct</label>
                           <input
                             type="number"
+                            aria-label={`${input.sectionName} correct`}
                             value={input.correct}
                             onChange={(e) => handleSectionInputChange(idx, 'correct', e.target.value)}
                             placeholder="0"
-                            className="w-full p-1.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--ink-border)] font-semibold text-emerald-600 dark:text-emerald-400"
+                            className={`w-full p-1.5 rounded-lg bg-[var(--bg-panel)] border font-semibold text-emerald-600 dark:text-emerald-400 ${validationErrors[`${input.sectionId}.correct`] ? 'border-rose-500' : 'border-[var(--ink-border)]'}`}
                           />
+                          {validationErrors[`${input.sectionId}.correct`] && (
+                            <span className="text-[10px] text-rose-600 dark:text-rose-400 block mt-0.5">{validationErrors[`${input.sectionId}.correct`]}</span>
+                          )}
                         </div>
                         <div>
                           <label className="text-[10px] text-[var(--text-muted)] block">Wrong</label>
                           <input
                             type="number"
+                            aria-label={`${input.sectionName} wrong`}
                             value={input.wrong}
                             onChange={(e) => handleSectionInputChange(idx, 'wrong', e.target.value)}
                             placeholder="0"
-                            className="w-full p-1.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--ink-border)] font-semibold text-rose-600 dark:text-rose-400"
+                            className={`w-full p-1.5 rounded-lg bg-[var(--bg-panel)] border font-semibold text-rose-600 dark:text-rose-400 ${validationErrors[`${input.sectionId}.wrong`] ? 'border-rose-500' : 'border-[var(--ink-border)]'}`}
                           />
+                          {validationErrors[`${input.sectionId}.wrong`] && (
+                            <span className="text-[10px] text-rose-600 dark:text-rose-400 block mt-0.5">{validationErrors[`${input.sectionId}.wrong`]}</span>
+                          )}
                         </div>
                         <div>
                           <label className="text-[10px] text-[var(--text-muted)] block">Time (min)</label>
                           <input
                             type="number"
+                            aria-label={`${input.sectionName} time`}
                             value={input.timeMinutes}
                             onChange={(e) => handleSectionInputChange(idx, 'timeMinutes', e.target.value)}
                             placeholder="20"
-                            className="w-full p-1.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--ink-border)] font-semibold"
+                            className={`w-full p-1.5 rounded-lg bg-[var(--bg-panel)] border font-semibold ${validationErrors[`${input.sectionId}.timeMinutes`] ? 'border-rose-500' : 'border-[var(--ink-border)]'}`}
                           />
+                          {validationErrors[`${input.sectionId}.timeMinutes`] && (
+                            <span className="text-[10px] text-rose-600 dark:text-rose-400 block mt-0.5">{validationErrors[`${input.sectionId}.timeMinutes`]}</span>
+                          )}
                         </div>
                       </div>
                     </div>

@@ -345,7 +345,12 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
               </motion.div>
             )}
 
-            <div className="bg-[var(--card-bg)] rounded-2xl border-2 border-[var(--ink-border)] shadow-manga overflow-hidden transition-all">
+            <div style={{ perspective: 1200 }} className="w-full relative">
+              <motion.div
+                animate={{ rotateY: isRevealed ? 360 : 0 }}
+                transition={{ type: 'spring', stiffness: 240, damping: 22 }}
+                className="bg-[var(--card-bg)] rounded-2xl border-2 border-[var(--ink-border)] shadow-manga overflow-hidden"
+              >
               {/* Card Header */}
               <div className="p-4 bg-[var(--surface-tag)] border-b-2 border-[var(--ink-border)] flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -503,7 +508,8 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
                   </motion.div>
                 )}
               </div>
-            </div>
+            </motion.div>
+          </div>
           </div>
         </div>
       )}
