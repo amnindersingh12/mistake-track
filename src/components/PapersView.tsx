@@ -18,6 +18,7 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { parseCsvRows, getPaperQuestionsCsvTemplate, downloadTemplateFile } from '../utils/dataIntake';
+import { getTodayDateStr } from '../utils/srs';
 
 interface PapersViewProps {
   papers: PaperTest[];
@@ -62,7 +63,7 @@ export const PapersView: React.FC<PapersViewProps> = ({
   const [qShortcut, setQShortcut] = useState('');
 
   // Outside Log Form State
-  const [outsideDate, setOutsideDate] = useState(new Date().toISOString().split('T')[0]);
+  const [outsideDate, setOutsideDate] = useState(getTodayDateStr());
   const [outsideSections, setOutsideSections] = useState(
     settings.sections.map((s) => ({
       sectionId: s.id,
@@ -403,7 +404,7 @@ export const PapersView: React.FC<PapersViewProps> = ({
                     <button
                       onClick={() => {
                         setActivePaperForOutsideLog(paper);
-                        setOutsideDate(new Date().toISOString().split('T')[0]);
+                        setOutsideDate(getTodayDateStr());
                       }}
                       className="manga-btn py-2 px-2 rounded-lg bg-[var(--bg-surface)] border border-[var(--ink-border)] text-xs font-bold flex items-center justify-center gap-1"
                     >

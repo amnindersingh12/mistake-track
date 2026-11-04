@@ -2,14 +2,54 @@ import { MistakeEntry, MistakeStatus } from '../types';
 
 export const SRS_INTERVALS = [1, 3, 7, 14, 30];
 
+function pad(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+/**
+ * Formats a Date as YYYY-MM-DD using the device's local calendar, not UTC.
+ */
+export function getLocalDateStr(date: Date = new Date()): string {
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  return `${year}-${month}-${day}`;
+}
+
 export function getTodayDateStr(): string {
-  return new Date().toISOString().split('T')[0];
+  return getLocalDateStr(new Date());
+}
+
+/**
+ * Counts consecutive active calendar days, allowing the streak to start today or yesterday.
+ * Dates are local YYYY-MM-DD strings, so a UTC offset cannot break the streak.
+ */
+export function calculateStreak(activeDates: string[], now: Date = new Date()): number {
+  const dates = new Set(activeDates.filter(Boolean));
+  if (dates.size === 0) return 0;
+
+  let cursor = getLocalDateStr(now);
+  if (!dates.has(cursor)) {
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    cursor = getLocalDateStr(yesterday);
+    if (!dates.has(cursor)) return 0;
+  }
+
+  let streak = 0;
+  while (dates.has(cursor)) {
+    streak++;
+    cursor = addDaysToDate(cursor, -1);
+  }
+  return streak;
 }
 
 export function addDaysToDate(dateStr: string, days: number): string {
-  const d = new Date(dateStr);
+  const [year, month, day] = dateStr.split('-').map(Number);
+  // Using noon (12:00:00) avoids DST edge cases where midnight +- 1 hour shifts calendar day
+  const d = new Date(year, (month || 1) - 1, day || 1, 12, 0, 0);
   d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
+  return getLocalDateStr(d);
 }
 
 /**
@@ -68,4 +108,3 @@ export function processSrsReview(
     };
   }
 }
-

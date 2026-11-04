@@ -17,6 +17,8 @@ import {
   getMistakeJsonTemplate,
   downloadTemplateFile,
   parseCsvRows,
+  parseMockCsv,
+  parseMistakeCsv,
   parseTestbookPastedText,
   parseTimeString,
   QUESTION_MISTAKE_REASONS,
@@ -24,6 +26,8 @@ import {
   ParsedPasteResult
 } from '../utils/dataIntake';
 import { Mascot } from './Mascot';
+import { applyBackup, BackupPayload, summarizeBackup, validateBackup } from '../utils/exportImport';
+import { getTodayDateStr } from '../utils/srs';
 import {
   X,
   FileSpreadsheet,
@@ -74,11 +78,13 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
   const [previewData, setPreviewData] = useState<any[] | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [fileName, setFileName] = useState<string>('');
+  const [pendingBackup, setPendingBackup] = useState<BackupPayload | null>(null);
+  const [pendingBackupError, setPendingBackupError] = useState<string | null>(null);
 
   // Full Mock Scan State
   const [fullScanData, setFullScanData] = useState<FullMockScanResult | null>(null);
   const [fullScanMockName, setFullScanMockName] = useState('');
-  const [fullScanDate, setFullScanDate] = useState(new Date().toISOString().split('T')[0]);
+  const [fullScanDate, setFullScanDate] = useState(getTodayDateStr());
   const [selectedMistakeNumbers, setSelectedMistakeNumbers] = useState<Set<number>>(new Set());
   const [questionMistakeReasons, setQuestionMistakeReasons] = useState<Record<number, string[]>>({});
   const [selectedSectionFilter, setSelectedSectionFilter] = useState('All');
@@ -95,7 +101,7 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
         const sd = initialImportPayload.scanData;
         setFullScanData(sd);
         setFullScanMockName(sd.mockName || sd.examName || initialImportPayload.source?.title || 'Testbook Full Mock');
-        setFullScanDate(initialImportPayload.capturedAt ? initialImportPayload.capturedAt.split('T')[0] : new Date().toISOString().split('T')[0]);
+        setFullScanDate(initialImportPayload.capturedAt ? initialImportPayload.capturedAt.slice(0, 10) : getTodayDateStr());
 
         const initialCandidateSet = new Set<number>();
         const initialReasons: Record<number, string[]> = {};
@@ -136,7 +142,7 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
           contentType: 'mock',
           rawText: initialImportPayload.text || '',
           mockName: s.mockName || initialImportPayload.source?.title || 'Testbook Mock Test',
-          date: new Date().toISOString().split('T')[0],
+          date: getTodayDateStr(),
           source: 'Testbook',
           sections,
           totalAttempted: s.derivedTotals?.totalAttempted,
@@ -171,7 +177,7 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
           contentType: 'mistake',
           rawText: initialImportPayload.text || '',
           mockName: initialImportPayload.source?.title || 'Testbook Review',
-          date: new Date().toISOString().split('T')[0],
+          date: getTodayDateStr(),
           source: 'Testbook',
           sections: [],
           mistake: {
@@ -272,8 +278,7 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
     if (!parsedPaste?.mistake) return;
     const m = parsedPaste.mistake;
     const newMistake: Omit<MistakeEntry, 'id'> = {
-      mockId: 1,
-      mockName: m.mockName || 'Testbook Review',
+      mockName: m.mockName || 'External / unlinked',
       sectionId: m.sectionId,
       sectionName: m.sectionName,
       topic: m.topic || 'General',
@@ -295,9 +300,9 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
       status: 'New',
       interval: 1,
       consecutiveCorrect: 0,
-      nextReviewDate: new Date().toISOString().split('T')[0],
+      nextReviewDate: getTodayDateStr(),
       history: [],
-      createdAt: new Date().toISOString().split('T')[0]
+      createdAt: getTodayDateStr()
     };
 
     await db.mistakes.add(newMistake as MistakeEntry);
@@ -427,7 +432,7 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
 
       const mockRecord: Omit<MockTest, 'id'> = {
         name: fullScanMockName.trim() || 'Testbook Full Mock Scan',
-        date: fullScanDate || new Date().toISOString().split('T')[0],
+        date: fullScanDate || getTodayDateStr(),
         source: initialImportPayload?.source?.platform || 'Testbook',
         attemptType: 'mock',
         sections,
@@ -443,7 +448,7 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
       };
 
       const selectedQuestions = (fullScanData.questions || []).filter((q) => selectedMistakeNumbers.has(q.questionNumber));
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = getTodayDateStr();
 
       // Single ACID transaction saving mock and selected mistakes
       await db.transaction('rw', [db.mocks, db.mistakes], async () => {
@@ -517,119 +522,19 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
     const reader = new FileReader();
     reader.onload = (evt) => {
       const text = evt.target?.result as string;
-      const rows = parseCsvRows(text);
-      if (rows.length < 2) {
-        setValidationErrors(['CSV file must have a header row and at least 1 data row.']);
-        return;
-      }
-
-      const headers = rows[0].map((h) => h.toLowerCase());
-      const parsedMocks: any[] = [];
-      const errors: string[] = [];
-
-      for (let i = 1; i < rows.length; i++) {
-        const row = rows[i];
-        if (row.length < 5) continue;
-
-        const name = row[0] || `Mock Test ${i}`;
-        const date = row[1] || new Date().toISOString().split('T')[0];
-        const source = row[2] || 'Testbook';
-        const type = (['mock', 'pyq', 'memory-based'].includes(row[3]?.toLowerCase()) ? row[3].toLowerCase() : 'mock');
-
-        // Check date format
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-          errors.push(`Row ${i}: Invalid date format "${date}". Use YYYY-MM-DD.`);
-        }
-
-        parsedMocks.push({ name, date, source, attemptType: type, rawRow: row });
-      }
-
-      setValidationErrors(errors);
-      setPreviewData(parsedMocks);
+      const parsed = parseMockCsv(text, settings);
+      setValidationErrors(parsed.errors);
+      setPreviewData(parsed.records);
     };
     reader.readAsText(file);
   };
 
-  // Commit CSV Mocks
+  // Commit CSV Mocks. The parser uses the active section config, not a fixed 100-question layout.
   const handleSaveCsvMocks = async () => {
     if (!previewData || previewData.length === 0) return;
-
-    for (const item of previewData) {
-      const row = item.rawRow;
-      // Default sectional distribution
-      const qAtt = parseInt(row[6], 10) || 0;
-      const qCorr = parseInt(row[7], 10) || 0;
-      const qWrong = parseInt(row[8], 10) || 0;
-
-      const rAtt = parseInt(row[10], 10) || 0;
-      const rCorr = parseInt(row[11], 10) || 0;
-      const rWrong = parseInt(row[12], 10) || 0;
-
-      const eAtt = parseInt(row[14], 10) || 0;
-      const eCorr = parseInt(row[15], 10) || 0;
-      const eWrong = parseInt(row[16], 10) || 0;
-
-      const sections = [
-        {
-          sectionId: 'quant',
-          sectionName: 'Quantitative Aptitude',
-          attempted: qAtt,
-          correct: qCorr,
-          wrong: qWrong,
-          timeSpentSeconds: 1200,
-          unattempted: 35 - qAtt,
-          netScore: Number((qCorr - qWrong * 0.25).toFixed(2)),
-          accuracy: qAtt > 0 ? Number(((qCorr / qAtt) * 100).toFixed(1)) : 0,
-          marksLostNegative: Number((qWrong * 0.25).toFixed(2))
-        },
-        {
-          sectionId: 'reasoning',
-          sectionName: 'Reasoning Ability',
-          attempted: rAtt,
-          correct: rCorr,
-          wrong: rWrong,
-          timeSpentSeconds: 1200,
-          unattempted: 35 - rAtt,
-          netScore: Number((rCorr - rWrong * 0.25).toFixed(2)),
-          accuracy: rAtt > 0 ? Number(((rCorr / rAtt) * 100).toFixed(1)) : 0,
-          marksLostNegative: Number((rWrong * 0.25).toFixed(2))
-        },
-        {
-          sectionId: 'english',
-          sectionName: 'English Language',
-          attempted: eAtt,
-          correct: eCorr,
-          wrong: eWrong,
-          timeSpentSeconds: 1200,
-          unattempted: 30 - eAtt,
-          netScore: Number((eCorr - eWrong * 0.25).toFixed(2)),
-          accuracy: eAtt > 0 ? Number(((eCorr / eAtt) * 100).toFixed(1)) : 0,
-          marksLostNegative: Number((eWrong * 0.25).toFixed(2))
-        }
-      ];
-
-      const totAtt = qAtt + rAtt + eAtt;
-      const totCorr = qCorr + rCorr + eCorr;
-      const totWrong = qWrong + rWrong + eWrong;
-      const totNet = Number(sections.reduce((s, x) => s + x.netScore, 0).toFixed(2));
-
-      await db.mocks.add({
-        name: item.name,
-        date: item.date,
-        source: item.source,
-        attemptType: item.attemptType || 'mock',
-        sections,
-        totalAttempted: totAtt,
-        totalCorrect: totCorr,
-        totalWrong: totWrong,
-        totalUnattempted: 100 - totAtt,
-        totalNetScore: totNet,
-        overallAccuracy: totAtt > 0 ? Number(((totCorr / totAtt) * 100).toFixed(1)) : 0,
-        totalMarksLostNegative: Number((totWrong * 0.25).toFixed(2)),
-        totalTimeSpentSeconds: 3600
-      });
-    }
-
+    await db.transaction('rw', db.mocks, async () => {
+      await db.mocks.bulkAdd(previewData as MockTest[]);
+    });
     onSuccess(`Imported ${previewData.length} mock test(s) successfully!`);
     onClose();
   };
@@ -643,74 +548,9 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
 
     const reader = new FileReader();
     reader.onload = (evt) => {
-      const text = evt.target?.result as string;
-      const rows = parseCsvRows(text);
-      if (rows.length < 2) {
-        setValidationErrors(['CSV file must contain a header and at least 1 mistake entry.']);
-        return;
-      }
-
-      const mistakesList: any[] = [];
-      const errors: string[] = [];
-
-      for (let i = 1; i < rows.length; i++) {
-        const row = rows[i];
-        if (row.length < 6) continue;
-
-        const mockName = row[0] || 'Imported Mock';
-        const secName = row[1] || 'Quant';
-        const topic = row[2] || 'Arithmetic';
-        const subtopic = row[3] || '';
-        const qNo = parseInt(row[4], 10) || i;
-        const qText = row[5] || 'Question statement';
-        const myAns = row[6] || '';
-        const corrAns = row[7] || '';
-        const resultType = (['Wrong', 'Left unattempted', 'Correct-but-slow'].includes(row[8]) ? row[8] : 'Wrong');
-        const errorTypes = row[9] ? row[9].split(';').map((s) => s.trim()) : ['Concept gap'];
-        const timeSpent = parseInt(row[10], 10) || 60;
-        const idealTime = parseInt(row[11], 10) || 35;
-        const whatWrong = row[12] || 'Mistake recorded.';
-        const sol = row[13] || 'Refer solution.';
-        const shortcut = row[14] || '';
-        const rule = row[15] || 'Review core rule.';
-        const diff = (['Easy', 'Medium', 'Hard'].includes(row[16]) ? row[16] : 'Medium');
-
-        if (!rule) {
-          errors.push(`Row ${i}: Missing "Rule to Remember".`);
-        }
-
-        mistakesList.push({
-          mockId: 1,
-          mockName,
-          sectionId: secName.toLowerCase().includes('reason') ? 'reasoning' : secName.toLowerCase().includes('eng') ? 'english' : 'quant',
-          sectionName: secName,
-          topic,
-          subtopic,
-          questionNumber: qNo,
-          questionText: qText,
-          myAnswer: myAns,
-          correctAnswer: corrAns,
-          resultType,
-          errorTypes,
-          timeSpentSeconds: timeSpent,
-          idealTimeSeconds: idealTime,
-          whatWentWrong: whatWrong,
-          correctSolution: sol,
-          betterApproach: shortcut,
-          ruleToRemember: rule,
-          difficulty: diff,
-          tags: ['csv-import'],
-          status: 'New',
-          interval: 1,
-          consecutiveCorrect: 0,
-          nextReviewDate: new Date().toISOString().split('T')[0],
-          history: [],
-          createdAt: new Date().toISOString().split('T')[0]
-        });
-      }
-
-      setValidationErrors(errors);
-      setPreviewData(mistakesList);
+      const parsed = parseMistakeCsv(evt.target?.result as string);
+      setValidationErrors(parsed.errors);
+      setPreviewData(parsed.records);
     };
     reader.readAsText(file);
   };
@@ -718,9 +558,7 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
   // Commit CSV Mistakes
   const handleSaveCsvMistakes = async () => {
     if (!previewData || previewData.length === 0) return;
-    for (const m of previewData) {
-      await db.mistakes.add(m);
-    }
+    await db.mistakes.bulkAdd(previewData as MistakeEntry[]);
     onSuccess(`Imported ${previewData.length} mistake(s) successfully!`);
     onClose();
   };
@@ -735,7 +573,23 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
     const reader = new FileReader();
     reader.onload = async (evt) => {
       try {
-        const json = JSON.parse(evt.target?.result as string);
+        const text = evt.target?.result as string;
+        const json = JSON.parse(text);
+        setPendingBackup(null);
+        setPendingBackupError(null);
+
+        // Full backup or /my-data bundle: validate and preview before any write.
+        if (json && typeof json === 'object' && !Array.isArray(json) && 'version' in json && 'settings' in json) {
+          try {
+            const payload = validateBackup(text);
+            setPendingBackup(payload);
+            setPreviewData(null);
+          } catch (err: unknown) {
+            setPendingBackupError(err instanceof Error ? err.message : 'Invalid backup file.');
+          }
+          return;
+        }
+
         if (Array.isArray(json)) {
           setPreviewData(json);
         } else if (json.mocks || json.mistakes) {
@@ -748,6 +602,20 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleConfirmBackup = async (mode: 'replace' | 'merge') => {
+    if (!pendingBackup) return;
+    try {
+      const summary = summarizeBackup(pendingBackup);
+      await applyBackup(pendingBackup, mode);
+      const message = `${mode === 'replace' ? 'Replaced' : 'Merged'} ${summary.mocks} mocks, ${summary.mistakes} mistakes, ${summary.papers} papers and ${summary.images} images.`;
+      onSuccess(message);
+      setPendingBackup(null);
+      onClose();
+    } catch (err: unknown) {
+      setPendingBackupError(err instanceof Error ? err.message : 'Import failed.');
+    }
   };
 
   const handleSaveJson = async () => {
@@ -1575,6 +1443,46 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
                 <span className="text-[11px] text-[var(--text-muted)] mt-1">Accepts .json format</span>
                 <input type="file" accept=".json" onChange={handleJsonUpload} className="hidden" />
               </label>
+
+              {pendingBackupError && (
+                <div role="alert" className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border-2 border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-semibold">
+                  {pendingBackupError}
+                </div>
+              )}
+
+              {pendingBackup && (
+                <div className="p-4 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] space-y-3 text-xs">
+                  <h4 className="font-display font-bold text-sm">Backup preview — confirm before saving</h4>
+                  <p className="text-[var(--text-muted)]">
+                    {summarizeBackup(pendingBackup).mocks} mocks • {summarizeBackup(pendingBackup).mistakes} mistakes •{' '}
+                    {summarizeBackup(pendingBackup).papers} papers • {summarizeBackup(pendingBackup).paperAttempts} paper responses •{' '}
+                    {summarizeBackup(pendingBackup).images} images
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleConfirmBackup('replace')}
+                      className="manga-btn px-4 py-2 rounded-xl bg-[var(--peach)] text-[var(--ink)] font-bold"
+                    >
+                      Replace current data
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleConfirmBackup('merge')}
+                      className="manga-btn px-4 py-2 rounded-xl bg-[var(--mint)] text-[var(--ink)] font-bold"
+                    >
+                      Merge by id
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPendingBackup(null)}
+                      className="px-4 py-2 rounded-xl border border-[var(--ink-border)] font-bold"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {previewData && (
                 <div className="flex justify-end pt-2">

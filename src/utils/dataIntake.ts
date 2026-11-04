@@ -12,6 +12,7 @@ import {
   StudyBridgeMode,
   FullMockScanResult
 } from '../types';
+import { getTodayDateStr } from './srs';
 
 /**
  * Generates sample CSV templates for user download.
@@ -358,7 +359,7 @@ export function parseTimeString(str: string): { minutes: number; seconds: number
 
 export function parseTestbookPastedText(rawText: string, settings: ExamSettings): ParsedPasteResult {
   const lines = rawText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getTodayDateStr();
   const uncertainFields: string[] = [];
 
   // Determine if this is a single Question / Mistake review or a Mock scorecard
@@ -698,6 +699,238 @@ export function parseTestbookPastedText(rawText: string, settings: ExamSettings)
   }
 
   return result;
+}
+
+export interface MockCsvParseResult {
+  records: Array<Omit<MockTest, 'id'>>;
+  errors: string[];
+}
+
+export interface MistakeCsvParseResult {
+  records: Array<Omit<MistakeEntry, 'id'>>;
+  errors: string[];
+}
+
+function normalizeHeader(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function findColumn(headers: string[], candidates: string[]): number {
+  const normalized = headers.map(normalizeHeader);
+  for (const candidate of candidates) {
+    const index = normalized.indexOf(normalizeHeader(candidate));
+    if (index !== -1) return index;
+  }
+  return -1;
+}
+
+function numberAt(row: string[], index: number, fallback = 0): number {
+  if (index < 0) return fallback;
+  const parsed = Number.parseInt(row[index] ?? '', 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+/**
+ * Parses the mock CSV template into complete mock records using the current exam settings.
+ * Section totals and negative marking come from settings, never from a hardcoded 100/0.25 layout.
+ */
+export function parseMockCsv(text: string, settings: ExamSettings): MockCsvParseResult {
+  const rows = parseCsvRows(text);
+  const errors: string[] = [];
+  const records: Array<Omit<MockTest, 'id'>> = [];
+
+  if (rows.length < 2) {
+    return { records, errors: ['CSV file must have a header row and at least 1 data row.'] };
+  }
+
+  const headers = rows[0];
+  const nameIndex = findColumn(headers, ['Mock Name', 'Name']);
+  const dateIndex = findColumn(headers, ['Date (YYYY-MM-DD)', 'Date']);
+  const sourceIndex = findColumn(headers, ['Source', 'Platform']);
+  const typeIndex = findColumn(headers, ['Type (mock/pyq/memory-based)', 'Type']);
+  const rankIndex = findColumn(headers, ['Rank']);
+  const percentileIndex = findColumn(headers, ['Percentile']);
+
+  for (let rowIndex = 1; rowIndex < rows.length; rowIndex++) {
+    const row = rows[rowIndex];
+    if (row.every((cell) => !cell.trim())) continue;
+
+    const name = (nameIndex >= 0 ? row[nameIndex] : '') || `Mock Test ${rowIndex}`;
+    const date = (dateIndex >= 0 ? row[dateIndex] : '') || getTodayDateStr();
+    const source = (sourceIndex >= 0 ? row[sourceIndex] : '') || 'CSV Import';
+    const rawType = (typeIndex >= 0 ? row[typeIndex] : '').toLowerCase();
+    const attemptType = (['mock', 'pyq', 'memory-based'].includes(rawType) ? rawType : 'mock') as MockTest['attemptType'];
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      errors.push(`Row ${rowIndex + 1}: Invalid date "${date}". Use YYYY-MM-DD.`);
+    }
+
+    let totalAttempted = 0;
+    let totalCorrect = 0;
+    let totalWrong = 0;
+    let totalUnattempted = 0;
+    let totalNetScore = 0;
+    let totalTimeSpentSeconds = 0;
+
+    const sections: SectionPerformance[] = settings.sections.map((section) => {
+      const attemptedIndex = findColumn(headers, [
+        `${section.name} Attempted`,
+        `${section.id} Attempted`,
+        'Quant Attempted'
+      ]);
+      const correctIndex = findColumn(headers, [
+        `${section.name} Correct`,
+        `${section.id} Correct`,
+        'Quant Correct'
+      ]);
+      const wrongIndex = findColumn(headers, [
+        `${section.name} Wrong`,
+        `${section.id} Wrong`,
+        'Quant Wrong'
+      ]);
+      const timeIndex = findColumn(headers, [
+        `${section.name} Time (min)`,
+        `${section.id} Time (min)`,
+        'Quant Time (min)'
+      ]);
+
+      const attempted = numberAt(row, attemptedIndex);
+      const correct = numberAt(row, correctIndex);
+      const wrong = numberAt(row, wrongIndex);
+      const timeMinutes = numberAt(row, timeIndex, section.timeLimitMinutes || 0);
+      const unattempted = Math.max(0, section.totalQuestions - attempted);
+      const netScore = Number((correct * section.marksPerCorrect - wrong * section.negativeMark).toFixed(2));
+      const accuracy = attempted > 0 ? Number(((correct / attempted) * 100).toFixed(1)) : 0;
+      const marksLostNegative = Number((wrong * section.negativeMark).toFixed(2));
+
+      totalAttempted += attempted;
+      totalCorrect += correct;
+      totalWrong += wrong;
+      totalUnattempted += unattempted;
+      totalNetScore += netScore;
+      totalTimeSpentSeconds += timeMinutes * 60;
+
+      return {
+        sectionId: section.id,
+        sectionName: section.name,
+        attempted,
+        correct,
+        wrong,
+        timeSpentSeconds: timeMinutes * 60,
+        unattempted,
+        netScore,
+        accuracy,
+        marksLostNegative
+      };
+    });
+
+    records.push({
+      name,
+      date,
+      source,
+      attemptType,
+      overallRank: rankIndex >= 0 && row[rankIndex] ? Number(row[rankIndex]) : undefined,
+      overallPercentile: percentileIndex >= 0 && row[percentileIndex] ? Number(row[percentileIndex]) : undefined,
+      sections,
+      totalAttempted,
+      totalCorrect,
+      totalWrong,
+      totalUnattempted,
+      totalNetScore: Number(totalNetScore.toFixed(2)),
+      overallAccuracy: totalAttempted > 0 ? Number(((totalCorrect / totalAttempted) * 100).toFixed(1)) : 0,
+      totalMarksLostNegative: Number(sections.reduce((sum, section) => sum + section.marksLostNegative, 0).toFixed(2)),
+      totalTimeSpentSeconds,
+      notes: 'Imported from CSV'
+    });
+  }
+
+  return { records, errors };
+}
+
+/**
+ * Parses the mistake CSV template into validated mistake records. CSV mistakes are
+ * unlinked by default; no fake mock id is invented.
+ */
+export function parseMistakeCsv(text: string): MistakeCsvParseResult {
+  const rows = parseCsvRows(text);
+  const errors: string[] = [];
+  const records: Array<Omit<MistakeEntry, 'id'>> = [];
+  const todayStr = getTodayDateStr();
+
+  if (rows.length < 2) {
+    return { records, errors: ['CSV file must contain a header and at least 1 mistake entry.'] };
+  }
+
+  const headers = rows[0];
+  for (let rowIndex = 1; rowIndex < rows.length; rowIndex++) {
+    const row = rows[rowIndex];
+    if (row.every((cell) => !cell.trim())) continue;
+
+    const mockName = (findColumn(headers, ['Mock Name']) >= 0 ? row[findColumn(headers, ['Mock Name'])] : '') || 'External / unlinked';
+    const sectionName = (findColumn(headers, ['Section (Quant/Reasoning/English)', 'Section']) >= 0
+      ? row[findColumn(headers, ['Section (Quant/Reasoning/English)', 'Section'])]
+      : '') || 'Quant';
+    const sectionId = sectionName.toLowerCase().includes('reason')
+      ? 'reasoning'
+      : sectionName.toLowerCase().includes('eng')
+        ? 'english'
+        : 'quant';
+    const topicIndex = findColumn(headers, ['Topic']);
+    const subtopicIndex = findColumn(headers, ['Subtopic']);
+    const qNoIndex = findColumn(headers, ['Question Number', 'Q No']);
+    const qTextIndex = findColumn(headers, ['Question Text']);
+    const myAnswerIndex = findColumn(headers, ['My Answer']);
+    const correctAnswerIndex = findColumn(headers, ['Correct Answer']);
+    const resultIndex = findColumn(headers, ['Result Type (Wrong/Left unattempted/Correct-but-slow)', 'Result Type']);
+    const errorIndex = findColumn(headers, ['Error Types (semicolon separated)', 'Error Types']);
+    const timeIndex = findColumn(headers, ['Time Spent (sec)']);
+    const idealIndex = findColumn(headers, ['Ideal Time (sec)']);
+    const whatWrongIndex = findColumn(headers, ['What Went Wrong']);
+    const solutionIndex = findColumn(headers, ['Correct Solution']);
+    const approachIndex = findColumn(headers, ['Better Approach / Shortcut', 'Better Approach']);
+    const ruleIndex = findColumn(headers, ['Rule to Remember']);
+    const difficultyIndex = findColumn(headers, ['Difficulty (Easy/Medium/Hard)', 'Difficulty']);
+
+    const rawResult = (resultIndex >= 0 ? row[resultIndex] : '') as string;
+    const resultType = (['Wrong', 'Left unattempted', 'Correct-but-slow'].includes(rawResult)
+      ? rawResult
+      : 'Wrong') as ResultType;
+    const rawDifficulty = (difficultyIndex >= 0 ? row[difficultyIndex] : '') as string;
+    const difficulty = (['Easy', 'Medium', 'Hard'].includes(rawDifficulty) ? rawDifficulty : 'Medium') as Difficulty;
+    const errorTypes = errorIndex >= 0 && row[errorIndex]
+      ? row[errorIndex].split(';').map((entry) => entry.trim()).filter(Boolean)
+      : ['Concept gap'];
+
+    records.push({
+      mockName,
+      sectionId,
+      sectionName,
+      topic: (topicIndex >= 0 ? row[topicIndex] : '') || 'General',
+      subtopic: (subtopicIndex >= 0 ? row[subtopicIndex] : '') || undefined,
+      questionNumber: numberAt(row, qNoIndex, rowIndex),
+      questionText: (qTextIndex >= 0 ? row[qTextIndex] : '') || 'Question not transcribed.',
+      myAnswer: (myAnswerIndex >= 0 ? row[myAnswerIndex] : '') || 'N/A',
+      correctAnswer: (correctAnswerIndex >= 0 ? row[correctAnswerIndex] : '') || 'N/A',
+      resultType,
+      errorTypes,
+      timeSpentSeconds: numberAt(row, timeIndex, 60),
+      idealTimeSeconds: numberAt(row, idealIndex, 35),
+      whatWentWrong: (whatWrongIndex >= 0 ? row[whatWrongIndex] : '') || 'Imported mistake.',
+      correctSolution: (solutionIndex >= 0 ? row[solutionIndex] : '') || 'Refer to standard solution.',
+      betterApproach: (approachIndex >= 0 ? row[approachIndex] : '') || 'Review core approach.',
+      ruleToRemember: (ruleIndex >= 0 ? row[ruleIndex] : '') || 'Review this concept.',
+      difficulty,
+      tags: ['csv-import'],
+      status: 'New',
+      interval: 1,
+      consecutiveCorrect: 0,
+      nextReviewDate: todayStr,
+      history: [],
+      createdAt: todayStr
+    });
+  }
+
+  return { records, errors };
 }
 
 /**

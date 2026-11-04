@@ -1,4 +1,4 @@
-import { MockTest, MistakeEntry, PaperTest, SectionConfig } from '../types';
+import { MockTest, MistakeEntry, PaperAttempt, PaperTest, SectionConfig } from '../types';
 
 export type TopicMasteryStatus = 'Not studied' | 'Learning' | 'Weak' | 'Improving' | 'Strong';
 
@@ -38,14 +38,15 @@ export function calculateTopicMastery(
   sections: SectionConfig[],
   mocks: MockTest[] = [],
   mistakes: MistakeEntry[] = [],
-  papers: PaperTest[] = []
+  papers: PaperTest[] = [],
+  paperAttempts: PaperAttempt[] = []
 ): TopicMasteryMatrix {
   // 1. Gather all unique topics mapped to their sections
   const topicMap = new Map<string, { sectionId: string; sectionName: string }>();
 
   // From section configurations
-  sections.forEach(sec => {
-    (sec.topics || []).forEach(t => {
+  sections.forEach((sec) => {
+    (sec.topics || []).forEach((t) => {
       const trimmed = t.trim();
       if (trimmed && !topicMap.has(trimmed.toLowerCase())) {
         topicMap.set(trimmed.toLowerCase(), { sectionId: sec.id, sectionName: sec.name });
@@ -54,7 +55,7 @@ export function calculateTopicMastery(
   });
 
   // Also include topics found dynamically in mistakes
-  mistakes.forEach(m => {
+  mistakes.forEach((m) => {
     const trimmed = (m.topic || '').trim();
     if (trimmed && !topicMap.has(trimmed.toLowerCase())) {
       topicMap.set(trimmed.toLowerCase(), { sectionId: m.sectionId, sectionName: m.sectionName || m.sectionId });
@@ -62,11 +63,11 @@ export function calculateTopicMastery(
   });
 
   // Also include topics found in papers
-  papers.forEach(p => {
-    (p.questions || []).forEach(q => {
+  papers.forEach((p) => {
+    (p.questions || []).forEach((q) => {
       const trimmed = (q.topic || '').trim();
       if (trimmed && !topicMap.has(trimmed.toLowerCase())) {
-        const sec = p.sections.find(s => s.id === q.sectionId);
+        const sec = p.sections.find((s) => s.id === q.sectionId);
         topicMap.set(trimmed.toLowerCase(), {
           sectionId: q.sectionId,
           sectionName: sec ? sec.name : q.sectionId
@@ -78,53 +79,112 @@ export function calculateTopicMastery(
   const allTopics: TopicEvidence[] = [];
 
   topicMap.forEach((meta, topicLower) => {
-    // Find canonical topic name display
+    // Canonical topic name display
     const canonicalName =
-      sections.flatMap(s => s.topics || []).find(t => t.trim().toLowerCase() === topicLower) ||
-      mistakes.find(m => (m.topic || '').trim().toLowerCase() === topicLower)?.topic ||
+      sections.flatMap((s) => s.topics || []).find((t) => t.trim().toLowerCase() === topicLower) ||
+      mistakes.find((m) => (m.topic || '').trim().toLowerCase() === topicLower)?.topic ||
+      papers.flatMap((p) => p.questions || []).find((q) => (q.topic || '').trim().toLowerCase() === topicLower)?.topic ||
       topicLower;
 
     // Filter mistakes for this topic
-    const topicMistakes = mistakes.filter(m => (m.topic || '').trim().toLowerCase() === topicLower);
+    const topicMistakes = mistakes.filter((m) => (m.topic || '').trim().toLowerCase() === topicLower);
     const mistakeCount = topicMistakes.length;
-    const unresolvedMistakes = topicMistakes.filter(m => m.status !== 'Mastered').length;
-    const masteredMistakes = topicMistakes.filter(m => m.status === 'Mastered').length;
+    const unresolvedMistakes = topicMistakes.filter((m) => m.status !== 'Mastered').length;
+    const masteredMistakes = topicMistakes.filter((m) => m.status === 'Mastered').length;
 
-    // Estimate attempts from in-app paper questions + logged mistakes
-    let totalWrong = topicMistakes.filter(m => m.resultType === 'Wrong').length;
-    let totalUnattempted = topicMistakes.filter(m => m.resultType === 'Left unattempted').length;
-    let totalCorrectSlow = topicMistakes.filter(m => m.resultType === 'Correct-but-slow').length;
-
-    // Count questions from papers if available
-    let paperQuestionsAttempted = 0;
-    let paperQuestionsCorrect = 0;
-
-    papers.forEach(p => {
-      (p.questions || []).forEach(q => {
+    // Paper questions for this topic across all papers
+    const topicPaperQuestions: Array<{ paper: PaperTest; questionId: string; questionNumber: number }> = [];
+    papers.forEach((p) => {
+      (p.questions || []).forEach((q) => {
         if ((q.topic || '').trim().toLowerCase() === topicLower) {
-          paperQuestionsAttempted++;
-          // If not in mistakes as wrong, consider solved correctly
-          const isMarkedWrong = topicMistakes.some(m => m.paperId === p.id && m.questionNumber === q.questionNumber);
-          if (!isMarkedWrong) {
-            paperQuestionsCorrect++;
-          }
+          topicPaperQuestions.push({ paper: p, questionId: q.id, questionNumber: q.questionNumber });
         }
       });
     });
 
-    const totalAttempted = paperQuestionsAttempted + totalWrong + totalCorrectSlow;
-    const totalCorrect = paperQuestionsCorrect + totalCorrectSlow;
+    // Explicit paper attempts for this topic
+    const topicAttempts = paperAttempts.filter((attempt) => {
+      if (attempt.topic && attempt.topic.trim().toLowerCase() === topicLower) return true;
+      const paper = papers.find((p) => p.id === attempt.paperId);
+      const question = paper?.questions.find((q) => q.id === attempt.questionId);
+      return (question?.topic || '').trim().toLowerCase() === topicLower;
+    });
+
+    const coveredKeys = new Set(topicAttempts.map((a) => `${a.paperId}:${a.questionId}`));
+
+    let paperQuestionsAttempted = 0;
+    let paperQuestionsCorrect = 0;
+    let paperQuestionsWrong = 0;
+    let paperQuestionsUnattempted = 0;
+
+    for (const a of topicAttempts) {
+      if (a.selected !== null) {
+        paperQuestionsAttempted++;
+        if (a.correct) {
+          paperQuestionsCorrect++;
+        } else {
+          paperQuestionsWrong++;
+        }
+      } else {
+        paperQuestionsUnattempted++;
+      }
+    }
+
+    // For paper questions without explicit paperAttempts entry (e.g. tests calling calculateTopicMastery without paperAttempts)
+    for (const { paper, questionId, questionNumber } of topicPaperQuestions) {
+      const key = `${paper.id}:${questionId}`;
+      if (!coveredKeys.has(key)) {
+        const m = topicMistakes.find(
+          (mistake) =>
+            mistake.paperId === paper.id &&
+            (mistake.questionId === questionId || mistake.questionNumber === questionNumber)
+        );
+        if (m) {
+          if (m.resultType === 'Wrong') {
+            paperQuestionsAttempted++;
+            paperQuestionsWrong++;
+          } else if (m.resultType === 'Left unattempted') {
+            paperQuestionsUnattempted++;
+          } else if (m.resultType === 'Correct-but-slow') {
+            paperQuestionsAttempted++;
+            paperQuestionsCorrect++;
+          }
+        } else {
+          // Solved correctly without mistake
+          paperQuestionsAttempted++;
+          paperQuestionsCorrect++;
+        }
+      }
+    }
+
+    // Non-paper mistakes (from mock tests or external imports not tied to paper questions)
+    const nonPaperMistakes = topicMistakes.filter(
+      (m) =>
+        !m.paperId ||
+        (!coveredKeys.has(`${m.paperId}:${m.questionId}`) &&
+          !topicPaperQuestions.some((pq) => pq.paper.id === m.paperId))
+    );
+
+    const nonPaperWrong = nonPaperMistakes.filter((m) => m.resultType === 'Wrong').length;
+    const nonPaperUnattempted = nonPaperMistakes.filter((m) => m.resultType === 'Left unattempted').length;
+    const nonPaperCorrectSlow = nonPaperMistakes.filter((m) => m.resultType === 'Correct-but-slow').length;
+
+    const totalAttempted = paperQuestionsAttempted + nonPaperWrong + nonPaperCorrectSlow;
+    const totalCorrect = paperQuestionsCorrect + nonPaperCorrectSlow;
+    const totalWrong = paperQuestionsWrong + nonPaperWrong;
+    const totalUnattempted = paperQuestionsUnattempted + nonPaperUnattempted;
+
     const accuracy = totalAttempted > 0 ? Math.round((totalCorrect / totalAttempted) * 100) : 0;
-    const evidenceCount = totalAttempted + totalUnattempted + mistakeCount;
+    const evidenceCount = totalAttempted + totalUnattempted;
 
     // Recent performance calculation (sort mistakes by date descending)
     const sortedMistakes = [...topicMistakes].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
     const recentMistakes = sortedMistakes.slice(0, 3);
-    const recentMastered = recentMistakes.filter(m => m.status === 'Mastered').length;
+    const recentMastered = recentMistakes.filter((m) => m.status === 'Mastered').length;
     const recentAccuracy =
       recentMistakes.length > 0 ? Math.round((recentMastered / recentMistakes.length) * 100) : accuracy;
 
-    // Determine status strictly from evidence
+    // Determine status strictly from evidence across all 5 states
     let status: TopicMasteryStatus = 'Not studied';
     let reason = '';
     let recommendedAction = '';
@@ -178,11 +238,11 @@ export function calculateTopicMastery(
   // Sort topics alphabetically by section and name
   allTopics.sort((a, b) => a.sectionName.localeCompare(b.sectionName) || a.topic.localeCompare(b.topic));
 
-  const strongTopics = allTopics.filter(t => t.status === 'Strong');
-  const weakTopics = allTopics.filter(t => t.status === 'Weak');
-  const improvingTopics = allTopics.filter(t => t.status === 'Improving');
-  const learningTopics = allTopics.filter(t => t.status === 'Learning');
-  const notStudiedTopics = allTopics.filter(t => t.status === 'Not studied');
+  const strongTopics = allTopics.filter((t) => t.status === 'Strong');
+  const weakTopics = allTopics.filter((t) => t.status === 'Weak');
+  const improvingTopics = allTopics.filter((t) => t.status === 'Improving');
+  const learningTopics = allTopics.filter((t) => t.status === 'Learning');
+  const notStudiedTopics = allTopics.filter((t) => t.status === 'Not studied');
 
   const countsByStatus: Record<TopicMasteryStatus, number> = {
     'Not studied': notStudiedTopics.length,
@@ -202,4 +262,3 @@ export function calculateTopicMastery(
     countsByStatus
   };
 }
-

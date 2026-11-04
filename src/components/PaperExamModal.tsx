@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { PaperTest, PaperQuestion, MockTest, ExamSettings } from '../types';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { PaperTest, PaperQuestion, MockTest, MistakeEntry, PaperAttempt, ExamSettings } from '../types';
 import { db } from '../db/db';
+import { getTodayDateStr } from '../utils/srs';
 import { Mascot } from './Mascot';
 import {
   Clock,
@@ -31,6 +32,7 @@ export const PaperExamModal: React.FC<PaperExamModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
+  const questions = paper.questions || [];
   const totalSeconds = (paper.totalTimeMinutes || 60) * 60;
   const [secondsRemaining, setSecondsRemaining] = useState(totalSeconds);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -42,17 +44,18 @@ export const PaperExamModal: React.FC<PaperExamModalProps> = ({
 
   const [isSubmitConfirmOpen, setIsSubmitConfirmOpen] = useState(false);
 
-  // Timer countdown
+  const responsesRef = useRef<Record<string, number>>(responses);
+  const secondsRemainingRef = useRef(totalSeconds);
+  const hasSubmittedRef = useRef(false);
+
+  useEffect(() => {
+    responsesRef.current = responses;
+  }, [responses]);
+
+  // Timer countdown. The updater is pure; submission happens in a separate effect.
   useEffect(() => {
     const timer = setInterval(() => {
-      setSecondsRemaining((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          handleSubmitExam();
-          return 0;
-        }
-        return prev - 1;
-      });
+      setSecondsRemaining((prev) => Math.max(0, prev - 1));
     }, 1000);
 
     return () => clearInterval(timer);
@@ -64,7 +67,6 @@ export const PaperExamModal: React.FC<PaperExamModalProps> = ({
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
-  const questions = paper.questions || [];
   const currentQ = questions[currentQuestionIndex];
 
   // Active section from current question
@@ -72,10 +74,11 @@ export const PaperExamModal: React.FC<PaperExamModalProps> = ({
 
   const handleSelectOption = (optIdx: number) => {
     if (!currentQ) return;
-    setResponses((prev) => ({
-      ...prev,
-      [currentQ.id]: optIdx
-    }));
+    setResponses((prev) => {
+      const next = { ...prev, [currentQ.id]: optIdx };
+      responsesRef.current = next;
+      return next;
+    });
   };
 
   const handleClearResponse = () => {
@@ -83,6 +86,7 @@ export const PaperExamModal: React.FC<PaperExamModalProps> = ({
     setResponses((prev) => {
       const next = { ...prev };
       delete next[currentQ.id];
+      responsesRef.current = next;
       return next;
     });
   };
@@ -136,21 +140,39 @@ export const PaperExamModal: React.FC<PaperExamModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, questions.length, currentQ]);
 
-  // Submit and auto-grade
-  const handleSubmitExam = async () => {
-    const timeSpentSeconds = totalSeconds - secondsRemaining;
+  // Submit and auto-grade. The guard makes timeout + Strict Mode + double clicks idempotent.
+  const handleSubmitExam = useCallback(async () => {
+    if (hasSubmittedRef.current) return;
+    hasSubmittedRef.current = true;
 
-    // Per section calculation
+    const submittedResponses = responsesRef.current;
+    const timeSpentSeconds = totalSeconds - Math.max(0, secondsRemainingRef.current);
+    const todayStr = getTodayDateStr();
+
+    const paperSections = paper.sections?.length ? paper.sections : settings.sections;
+    const sectionConfigs = [...paperSections];
+    questions.forEach((q) => {
+      if (!sectionConfigs.some((s) => s.id === q.sectionId)) {
+        const configured = settings.sections.find((s) => s.id === q.sectionId);
+        if (configured) sectionConfigs.push(configured);
+      }
+    });
+
+    const paperQuestionCounts: Record<string, number> = {};
+    questions.forEach((q) => {
+      paperQuestionCounts[q.sectionId] = (paperQuestionCounts[q.sectionId] || 0) + 1;
+    });
+
     const sectionBreakdown: Record<
       string,
       { attempted: number; correct: number; wrong: number; unattempted: number }
     > = {};
-
-    settings.sections.forEach((s) => {
+    sectionConfigs.forEach((s) => {
       sectionBreakdown[s.id] = { attempted: 0, correct: 0, wrong: 0, unattempted: 0 };
     });
 
-    const mistakesToAutoLog: any[] = [];
+    const mistakesToAutoLog: Array<Omit<MistakeEntry, 'id' | 'mockId'>> = [];
+    const attemptsToStore: Array<Omit<PaperAttempt, 'id' | 'mockId'>> = [];
 
     questions.forEach((q) => {
       const secId = q.sectionId;
@@ -158,25 +180,41 @@ export const PaperExamModal: React.FC<PaperExamModalProps> = ({
         sectionBreakdown[secId] = { attempted: 0, correct: 0, wrong: 0, unattempted: 0 };
       }
 
-      const selected = responses[q.id];
-      if (selected !== undefined) {
+      const selected = submittedResponses[q.id];
+      const selectedOption = selected === undefined ? null : selected;
+      const isCorrect = selectedOption !== null && selectedOption === q.correctOptionIndex;
+
+      attemptsToStore.push({
+        paperId: paper.id || 0,
+        questionId: q.id,
+        sectionId: q.sectionId,
+        topic: q.topic,
+        selected: selectedOption,
+        correct: isCorrect,
+        timeSpentSeconds: Math.round(timeSpentSeconds / Math.max(1, questions.length)),
+        attemptedAt: new Date().toISOString()
+      });
+
+      if (selectedOption !== null) {
         sectionBreakdown[secId].attempted++;
-        if (selected === q.correctOptionIndex) {
+        if (isCorrect) {
           sectionBreakdown[secId].correct++;
         } else {
           sectionBreakdown[secId].wrong++;
-          // Queue mistake
           mistakesToAutoLog.push({
+            mockName: '',
+            paperId: paper.id,
+            questionId: q.id,
             sectionId: q.sectionId,
-            sectionName: settings.sections.find((s) => s.id === q.sectionId)?.name || 'Section',
+            sectionName: sectionConfigs.find((s) => s.id === q.sectionId)?.name || 'Section',
             topic: q.topic || 'General',
             questionNumber: q.questionNumber,
             questionText: q.text,
-            myAnswer: q.options[selected] || `Option ${selected + 1}`,
+            myAnswer: q.options[selectedOption] || `Option ${selectedOption + 1}`,
             correctAnswer: q.options[q.correctOptionIndex] || `Option ${q.correctOptionIndex + 1}`,
             resultType: 'Wrong',
             errorTypes: ['Concept gap'],
-            timeSpentSeconds: Math.round(timeSpentSeconds / (questions.length || 1)),
+            timeSpentSeconds: Math.round(timeSpentSeconds / Math.max(1, questions.length)),
             idealTimeSeconds: 40,
             whatWentWrong: 'Missed in timed PYQ test attempt.',
             correctSolution: q.solution || 'Refer to standard solution.',
@@ -187,9 +225,9 @@ export const PaperExamModal: React.FC<PaperExamModalProps> = ({
             status: 'New',
             interval: 1,
             consecutiveCorrect: 0,
-            nextReviewDate: new Date().toISOString().split('T')[0],
+            nextReviewDate: todayStr,
             history: [],
-            createdAt: new Date().toISOString().split('T')[0]
+            createdAt: todayStr
           });
         }
       } else {
@@ -202,8 +240,8 @@ export const PaperExamModal: React.FC<PaperExamModalProps> = ({
     let totalWrong = 0;
     let totalNetScore = 0;
 
-    const sections = settings.sections.map((sec) => {
-      const b = sectionBreakdown[sec.id] || { attempted: 0, correct: 0, wrong: 0, unattempted: sec.totalQuestions };
+    const sections = sectionConfigs.map((sec) => {
+      const b = sectionBreakdown[sec.id] || { attempted: 0, correct: 0, wrong: 0, unattempted: 0 };
       const net = Number((b.correct * sec.marksPerCorrect - b.wrong * sec.negativeMark).toFixed(2));
       const acc = b.attempted > 0 ? Number(((b.correct / b.attempted) * 100).toFixed(1)) : 0;
       const neg = Number((b.wrong * sec.negativeMark).toFixed(2));
@@ -219,8 +257,8 @@ export const PaperExamModal: React.FC<PaperExamModalProps> = ({
         attempted: b.attempted,
         correct: b.correct,
         wrong: b.wrong,
-        timeSpentSeconds: Math.round(timeSpentSeconds / settings.sections.length),
-        unattempted: Math.max(0, sec.totalQuestions - b.attempted),
+        timeSpentSeconds: Math.round(timeSpentSeconds / Math.max(1, sectionConfigs.length)),
+        unattempted: Math.max(0, (paperQuestionCounts[sec.id] || 0) - b.attempted),
         netScore: net,
         accuracy: acc,
         marksLostNegative: neg
@@ -230,36 +268,58 @@ export const PaperExamModal: React.FC<PaperExamModalProps> = ({
     const overallAccuracy = totalAttempted > 0 ? Number(((totalCorrect / totalAttempted) * 100).toFixed(1)) : 0;
     const totalNeg = Number(sections.reduce((s, x) => s + x.marksLostNegative, 0).toFixed(2));
 
-    const mockName = `${paper.examName} (${paper.year}${paper.shift ? ` Shift ${paper.shift}` : ''}${paper.isMemoryBased ? ' Memory-Based' : ' PYQ'})`;
+    const rawShift = paper.shift?.trim();
+    const shiftLabel = rawShift ? (/^shift\b/i.test(rawShift) ? rawShift : `Shift ${rawShift}`) : '';
+    const mockName = `${paper.examName} (${paper.year}${shiftLabel ? ` ${shiftLabel}` : ''}${paper.isMemoryBased ? ' Memory-Based' : ' PYQ'})`;
 
-    const mockId = await db.mocks.add({
-      name: mockName,
-      date: new Date().toISOString().split('T')[0],
-      source: paper.isMemoryBased ? 'Memory-Based Paper' : 'Previous Year Paper',
-      attemptType: paper.isMemoryBased ? 'memory-based' : 'pyq',
-      paperId: paper.id,
-      sections,
-      totalAttempted,
-      totalCorrect,
-      totalWrong,
-      totalUnattempted: questions.length - totalAttempted,
-      totalNetScore: Number(totalNetScore.toFixed(2)),
-      overallAccuracy,
-      totalMarksLostNegative: totalNeg,
-      totalTimeSpentSeconds: timeSpentSeconds,
-      notes: `Attempted inside app in Timed Exam Mode.`
-    });
+    let mockId = 0;
+    try {
+      await db.transaction('rw', [db.mocks, db.mistakes, db.paperAttempts], async () => {
+        mockId = (await db.mocks.add({
+          name: mockName,
+          date: todayStr,
+          source: paper.isMemoryBased ? 'Memory-Based Paper' : 'Previous Year Paper',
+          attemptType: paper.isMemoryBased ? 'memory-based' : 'pyq',
+          paperId: paper.id,
+          sections,
+          totalAttempted,
+          totalCorrect,
+          totalWrong,
+          totalUnattempted: questions.length - totalAttempted,
+          totalNetScore: Number(totalNetScore.toFixed(2)),
+          overallAccuracy,
+          totalMarksLostNegative: totalNeg,
+          totalTimeSpentSeconds: timeSpentSeconds,
+          notes: `Attempted inside app in Timed Exam Mode.`
+        })) as number;
 
-    // Auto-log mistakes linked to mockId
-    for (const mst of mistakesToAutoLog) {
-      mst.mockId = mockId;
-      mst.mockName = mockName;
-      await db.mistakes.add(mst);
+        if (mistakesToAutoLog.length > 0) {
+          await db.mistakes.bulkAdd(
+            mistakesToAutoLog.map((mistake) => ({ ...mistake, mockId, mockName })) as MistakeEntry[]
+          );
+        }
+
+        if (attemptsToStore.length > 0) {
+          await db.paperAttempts.bulkAdd(
+            attemptsToStore.map((attempt) => ({ ...attempt, mockId })) as PaperAttempt[]
+          );
+        }
+      });
+    } catch (error) {
+      hasSubmittedRef.current = false;
+      throw error;
     }
 
     onFinished(mockId);
     onClose();
-  };
+  }, [paper, settings.sections, questions, totalSeconds, onFinished, onClose]);
+
+  useEffect(() => {
+    secondsRemainingRef.current = secondsRemaining;
+    if (secondsRemaining <= 0) {
+      void handleSubmitExam();
+    }
+  }, [secondsRemaining, handleSubmitExam]);
 
   return (
     <div className="fixed inset-0 z-50 bg-[var(--bg-sky)] text-[var(--text-main)] flex flex-col overflow-hidden font-sans">
@@ -517,7 +577,7 @@ export const PaperExamModal: React.FC<PaperExamModalProps> = ({
                 Keep Solving
               </button>
               <button
-                onClick={handleSubmitExam}
+                onClick={() => void handleSubmitExam()}
                 className="manga-btn flex-1 py-2 rounded-xl bg-[var(--mint)] text-[var(--ink)] text-xs font-bold"
               >
                 Confirm Submit
