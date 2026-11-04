@@ -13,8 +13,10 @@ import {
   calculateBreakEvenAccuracy,
   calculateWhatIfProjections,
   calculateTimePlan,
-  calculateGapAnalysis
+  calculateGapAnalysis,
+  generateAccuracyTierCurves
 } from '../utils/planner';
+import { calculateTimeAnalysis, calculateRepeatedMistakes } from '../utils/insights';
 import { calculateTopicMastery, TopicEvidence, TopicMasteryStatus } from '../utils/topicMastery';
 import { getTodayDateStr } from '../utils/srs';
 import {
@@ -189,7 +191,12 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
     return calculateTimePlan(secConfigs, historical, settings.totalTimeMinutes || 60);
   }, [mocks, settings]);
 
-  // Gap Analysis Roadmap
+  // Topic Mastery Matrix (Task 5)
+  const masteryMatrix = useMemo(() => {
+    return calculateTopicMastery(settings.sections, mocks, mistakes, papers, paperAttempts);
+  }, [settings.sections, mocks, mistakes, papers, paperAttempts]);
+
+  // Gap Analysis Roadmap (Careless Mistakes vs Topic Gaps from real data)
   const gapAnalysis = useMemo(() => {
     const recentMocks = mocks.slice(-3);
     const recentAvg =
@@ -198,17 +205,52 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
         : 0;
 
     const sillyMistakesCount = mistakes.filter((m) =>
-      (m.errorTypes || []).some((e) => e.toLowerCase().includes('silly') || e.toLowerCase().includes('careless'))
+      (m.errorTypes || []).some((e) =>
+        e.toLowerCase().includes('silly') ||
+        e.toLowerCase().includes('careless') ||
+        e.toLowerCase().includes('calculation') ||
+        e.toLowerCase().includes('rush')
+      )
     ).length;
-    const sillyLost = sillyMistakesCount * 1.25;
+    const sillyLost = Number((sillyMistakesCount * 1.25).toFixed(2));
 
-    return calculateGapAnalysis(settings.targetScore, recentAvg, sillyLost, null);
-  }, [mocks, mistakes, settings]);
+    const topWeak = masteryMatrix.weakTopics[0];
+    const topWeakTopicLoss = topWeak
+      ? { topic: topWeak.topic, marksLost: Number((topWeak.unresolvedMistakes * 1.25).toFixed(2)) }
+      : null;
 
-  // Topic Mastery Matrix (Task 5)
-  const masteryMatrix = useMemo(() => {
-    return calculateTopicMastery(settings.sections, mocks, mistakes, papers, paperAttempts);
-  }, [settings.sections, mocks, mistakes, papers, paperAttempts]);
+    return calculateGapAnalysis(settings.targetScore, Number(recentAvg.toFixed(2)), sillyLost, topWeakTopicLoss);
+  }, [mocks, mistakes, settings, masteryMatrix.weakTopics]);
+
+  // Rolling Accuracy Centered Curves for Selected Section
+  const rollingTiers = useMemo<[number, number, number]>(() => {
+    const base = Math.max(20, Math.min(90, rollingSectionAccuracy));
+    return [
+      Math.max(10, base - 10),
+      base,
+      Math.min(99, base + 10)
+    ];
+  }, [rollingSectionAccuracy]);
+
+  const accuracyTierCurves = useMemo(() => {
+    if (!selectedSection) return [];
+    return generateAccuracyTierCurves(
+      selectedSection.marksPerCorrect,
+      selectedSection.negativeMark,
+      selectedSection.totalQuestions,
+      rollingTiers
+    );
+  }, [selectedSection, rollingTiers]);
+
+  // Time Analysis on wrong questions vs ideal time
+  const timeAnalysisData = useMemo(() => {
+    return calculateTimeAnalysis(mistakes);
+  }, [mistakes]);
+
+  // Repeated Mistakes recurring across mocks
+  const repeatedMistakesList = useMemo(() => {
+    return calculateRepeatedMistakes(mistakes);
+  }, [mistakes]);
 
   const [masteryFilter, setMasteryFilter] = useState<TopicMasteryStatus | 'All'>('All');
   const [inspectedTopic, setInspectedTopic] = useState<TopicEvidence | null>(null);
@@ -289,6 +331,60 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Gap Analysis Roadmap */}
+      <div className="manga-panel p-5 bg-[var(--bg-panel)] rounded-2xl border-2 border-[var(--border-subtle)] shadow-manga space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[var(--border-subtle)] pb-3">
+          <div>
+            <h3 className="font-display text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
+              <Target className="w-4 h-4 text-[var(--action-primary)]" />
+              <span>Target Gap Analysis & Score Roadmap</span>
+            </h3>
+            <p className="text-xs text-[var(--text-muted)]">
+              Breakdown of lost marks into careless errors vs topic gaps derived from real logs.
+            </p>
+          </div>
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--action-primary)] font-bold">
+            Target: {settings.targetScore} pts
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-1">
+            <span className="text-[10px] font-mono text-[var(--text-muted)] uppercase font-bold">Gap to Target</span>
+            <div className="text-2xl font-black font-display text-[var(--action-primary)]">
+              {gapAnalysis.gap > 0 ? `+${gapAnalysis.gap}` : '0'} pts
+            </div>
+            <p className="text-[11px] text-[var(--text-muted)]">
+              {gapAnalysis.gap > 0 ? 'Shortfall from rolling average' : 'Target reached or beaten!'}
+            </p>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-1">
+            <span className="text-[10px] font-mono text-[var(--text-muted)] uppercase font-bold">From Careless Errors</span>
+            <div className="text-2xl font-black font-display text-rose-500">
+              +{gapAnalysis.sillyRecoverable} pts
+            </div>
+            <p className="text-[11px] text-[var(--text-muted)]">
+              Recoverable by eliminating calculation / rush errors
+            </p>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-1">
+            <span className="text-[10px] font-mono text-[var(--text-muted)] uppercase font-bold">From Topic Weakness</span>
+            <div className="text-2xl font-black font-display text-[var(--mint)]">
+              +{gapAnalysis.weakTopicRecoverable} pts
+            </div>
+            <p className="text-[11px] text-[var(--text-muted)]">
+              Recoverable by mastering top weak topic
+            </p>
+          </div>
+        </div>
+
+        <div className="p-3 rounded-xl bg-[var(--peach)]/20 border border-[var(--ink-border)]/40 text-xs text-[var(--ink)] dark:text-[var(--text-main)] font-medium leading-relaxed">
+          💡 <span className="font-bold">{gapAnalysis.summarySentence}</span>
+        </div>
+      </div>
 
       {/* SECTION 1: Daily Study Tasks Manager */}
       <div className="p-6 bg-[var(--bg-panel)] rounded-2xl border-2 border-[var(--border-subtle)] shadow-manga space-y-5">
@@ -692,6 +788,68 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
             </p>
           </div>
         </div>
+
+        {/* Expected Score Line Chart centered on rolling accuracy */}
+        <div className="pt-4 border-t border-[var(--border-subtle)] space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h4 className="font-display text-xs font-bold text-[var(--text-primary)]">
+                Expected Score vs Attempts Curve ({selectedSection?.name})
+              </h4>
+              <p className="text-[11px] text-[var(--text-muted)]">
+                Curves centered on rolling accuracy: {rollingTiers[0]}% (-10), {rollingTiers[1]}% (current), and {rollingTiers[2]}% (+10).
+              </p>
+            </div>
+            <span className="text-[10px] font-mono text-[var(--text-muted)]">
+              Break-Even: {breakEvenAcc}%
+            </span>
+          </div>
+
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={accuracyTierCurves} margin={{ top: 10, right: 20, bottom: 10, left: -10 }}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                <XAxis dataKey="attempts" label={{ value: 'Attempts', position: 'insideBottomRight', offset: -5, fontSize: 10 }} tick={{ fontSize: 11 }} />
+                <YAxis label={{ value: 'Expected Score', angle: -90, position: 'insideLeft', fontSize: 10 }} tick={{ fontSize: 11, fontFamily: 'JetBrains Mono' }} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'var(--bg-panel)',
+                    borderColor: 'var(--border-subtle)',
+                    borderRadius: '0.75rem',
+                    fontSize: '11px',
+                    fontFamily: 'JetBrains Mono'
+                  }}
+                />
+                <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
+                <ReferenceLine y={targetSectionScore} stroke="var(--action-primary)" strokeDasharray="4 4" label={{ value: `Target (${targetSectionScore})`, fill: 'var(--action-primary)', fontSize: 10 }} />
+                <Line
+                  type="monotone"
+                  dataKey="scoreTier1"
+                  name={`${rollingTiers[0]}% Accuracy (-10)`}
+                  stroke="var(--status-error)"
+                  strokeWidth={2}
+                  dot={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="scoreTier2"
+                  name={`${rollingTiers[1]}% Accuracy (Rolling)`}
+                  stroke="var(--action-primary)"
+                  strokeWidth={2.5}
+                  dot={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="scoreTier3"
+                  name={`${rollingTiers[2]}% Accuracy (+10)`}
+                  stroke="var(--status-success)"
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
       </div>
 
       {/* SECTION 4: What-If Exam Score Simulator */}
@@ -816,6 +974,115 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
             </div>
           ))}
         </div>
+      </div>
+
+      {/* SECTION 6: Time Analysis & Time Sinks */}
+      <div className="p-6 bg-[var(--bg-panel)] rounded-2xl border-2 border-[var(--border-subtle)] shadow-manga space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[var(--border-subtle)] pb-3">
+          <div>
+            <h3 className="font-display text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+              <Clock className="w-5 h-5 text-[var(--action-primary)]" />
+              <span>Time Analysis & Question Time Sinks</span>
+            </h3>
+            <p className="text-xs text-[var(--text-muted)]">
+              Identifies questions and topics where slow solving on wrong questions wastes precious exam minutes.
+            </p>
+          </div>
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] font-bold">
+            Wastage Ratio: {timeAnalysisData.timeWastageRatio}x
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+            <span className="text-[10px] font-mono text-[var(--text-muted)] block">Avg Time on Wrong Answers</span>
+            <span className="font-mono text-xl font-bold text-rose-500">{timeAnalysisData.avgTimeWrongSeconds}s</span>
+          </div>
+          <div className="p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+            <span className="text-[10px] font-mono text-[var(--text-muted)] block">Ideal Solving Target</span>
+            <span className="font-mono text-xl font-bold text-[var(--mint)]">{timeAnalysisData.avgTimeIdealSeconds}s</span>
+          </div>
+          <div className="p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+            <span className="text-[10px] font-mono text-[var(--text-muted)] block">Time Waste Factor</span>
+            <span className="font-mono text-xl font-bold text-[var(--action-primary)]">{timeAnalysisData.timeWastageRatio}x slower</span>
+          </div>
+        </div>
+
+        {timeAnalysisData.topicsWastingTime.length > 0 ? (
+          <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-[var(--bg-surface)] border-b border-[var(--border-subtle)] font-bold">
+                <tr>
+                  <th className="p-2.5">Topic</th>
+                  <th className="p-2.5">Section</th>
+                  <th className="p-2.5">Wrong Qs</th>
+                  <th className="p-2.5">Avg Spent</th>
+                  <th className="p-2.5">Ideal</th>
+                  <th className="p-2.5">Wastage Ratio</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border-subtle)]/40 bg-[var(--bg-panel)]">
+                {timeAnalysisData.topicsWastingTime.map((t) => (
+                  <tr key={t.topic}>
+                    <td className="p-2.5 font-bold text-[var(--text-primary)]">{t.topic}</td>
+                    <td className="p-2.5 text-[var(--text-muted)]">{t.sectionName}</td>
+                    <td className="p-2.5 font-mono">{t.wrongCount}</td>
+                    <td className="p-2.5 font-mono text-rose-500 font-bold">{t.avgTimeSpent}s</td>
+                    <td className="p-2.5 font-mono text-[var(--text-muted)]">{t.idealTime}s</td>
+                    <td className="p-2.5 font-mono font-bold text-rose-500">{t.ratio}x</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-xs text-[var(--text-muted)] italic py-2">
+            No severe time sinks detected (all wrong question average times are within 1.25x of ideal target).
+          </p>
+        )}
+      </div>
+
+      {/* SECTION 7: Repeated Mistakes View */}
+      <div className="p-6 bg-[var(--bg-panel)] rounded-2xl border-2 border-[var(--border-subtle)] shadow-manga space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[var(--border-subtle)] pb-3">
+          <div>
+            <h3 className="font-display text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+              <RotateCcw className="w-5 h-5 text-[var(--action-primary)]" />
+              <span>Repeated Mistakes Across Mocks</span>
+            </h3>
+            <p className="text-xs text-[var(--text-muted)]">
+              Pinpoints topics and patterns where you made mistakes across multiple separate mocks.
+            </p>
+          </div>
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--action-primary)] font-bold">
+            {repeatedMistakesList.length} recurring pattern(s)
+          </span>
+        </div>
+
+        {repeatedMistakesList.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {repeatedMistakesList.map((item, idx) => (
+              <div key={idx} className="p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-2 text-xs">
+                <div className="flex items-center justify-between font-bold">
+                  <span className="text-[var(--text-primary)] font-display">{item.name}</span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/10 text-rose-600 font-bold border border-rose-500/20">
+                    {item.mockCount} mock(s) • {item.count} total
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
+                  <span className="capitalize px-1.5 py-0.5 rounded bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-[10px] font-mono">
+                    {item.type === 'errorType' ? 'Error Type' : 'Topic'}
+                  </span>
+                  <span>Section: {item.section}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-[var(--text-muted)] italic py-2">
+            No repeated mistakes found across multiple mocks. Great job maintaining distinct learning feedback!
+          </p>
+        )}
       </div>
     </div>
   );

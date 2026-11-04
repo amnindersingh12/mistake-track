@@ -22,7 +22,10 @@ yarn-error.log*
 Thumbs.db
 ehthumbs.db
 
-# Environment variables
+# User local data drop
+my-data/
+/my-data/
+
 .env
 .env.local
 .env.development.local

@@ -16,7 +16,7 @@ npm install
 # 2. Run local development server
 npm run dev
 
-# 3. Run automated test suites (110 tests across 12 test files)
+# 3. Run automated test suites (123 tests across 15 test files)
 npm test
 
 # 4. Build for production (optimized code-splitting <500 kB per chunk)
@@ -97,16 +97,19 @@ Through route-level code splitting (`React.lazy` + `Suspense`) and Vite Rollup c
 
 ## 🧪 Automated Test Suites
 
-110 automated unit and integration tests passing:
+123 automated unit and integration tests passing:
 - `src/utils/contrast.test.ts` (12 tests) - WCAG color contrast ratios
 - `src/utils/mockValidation.test.ts` (7 tests) - Mock section validation constraints
-- `src/utils/exportImport.test.ts` (11 tests) - Atomic backup, restore rollback, and validation
+- `src/utils/exportImport.test.ts` (12 tests) - Atomic backup, restore rollback, and deduplication
 - `src/utils/analytics.test.ts` (16 tests) - Zero fake data, edge cases, break-even accuracy
-- `src/utils/planner.test.ts` (17 tests) - Attempt solvers and target projections
+- `src/utils/planner.test.ts` (17 tests) - Attempt solvers, gap analysis, and target projections
 - `src/utils/topicMastery.test.ts` (5 tests) - 5-state mastery matrix evidence
-- `src/utils/dataIntake.test.ts` (15 tests) - Paste parser and CSV import
-- `src/utils/testbookAdapter.test.ts` (5 tests) - Full DOM regression against Testbook markup
+- `src/utils/dataIntake.test.ts` (16 tests) - Paste parser and dynamic CSV section import
+- `src/utils/testbookAdapter.test.ts` (7 tests) - Full DOM regression against Testbook markup
 - `src/utils/studyBridgeExtension.test.ts` (11 tests) - Extension messaging contracts
 - `src/utils/studyBridgeAppIntegration.test.ts` (5 tests) - App import listener and acknowledgements
 - `src/components/ScreenshotInput.test.tsx` (4 tests) - Canvas compression and drag-drop
 - `src/components/ImportInboxView.test.tsx` (2 tests) - Triage and duplicate mock warning
+- `src/components/PaperExamModal.test.tsx` (3 tests) - Timeout idempotency, unattempted math, shift labels
+- `src/components/MistakesView.test.tsx` (4 tests) - Mistake filters, sorting, no Concept gap default, schedule preservation
+- `src/components/ReviewQueueView.test.tsx` (2 tests) - 3D spring flip, keyboard review shortcuts, excluding mastered cards

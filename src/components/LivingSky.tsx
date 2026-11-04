@@ -94,7 +94,7 @@ export const LivingSky: React.FC = () => {
     <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden" aria-hidden="true">
       {/* Drifting Clouds (CSS layered) */}
       <div className="absolute inset-0 opacity-40 dark:opacity-20 transition-opacity duration-700">
-        <svg className="absolute w-[200%] h-full animate-[drift_90s_linear_infinite]" viewBox="0 0 1600 400" fill="none">
+        <svg className="absolute w-[200%] h-full animate-[drift_90s_linear_infinite] motion-reduce:animate-none" viewBox="0 0 1600 400" fill="none">
           <path
             d="M150 120 Q 220 60 300 120 Q 380 70 460 130 Q 520 180 480 230 Q 420 280 320 260 Q 200 270 140 220 Q 100 170 150 120 Z"
             fill={theme === 'dark' ? '#1E2A52' : '#E8F4FA'}
@@ -108,11 +108,11 @@ export const LivingSky: React.FC = () => {
 
       {/* Subtle Twinkling Stars (Night Theme Only) */}
       <div className="hidden dark:block absolute inset-0 opacity-30">
-        <div className="absolute top-[12%] left-[18%] w-1.5 h-1.5 bg-[var(--peach)] rounded-full animate-pulse" />
-        <div className="absolute top-[25%] left-[65%] w-1 h-1 bg-[var(--sakura)] rounded-full animate-ping duration-1000" />
-        <div className="absolute top-[40%] left-[82%] w-1.5 h-1.5 bg-[var(--mint)] rounded-full animate-pulse" />
+        <div className="absolute top-[12%] left-[18%] w-1.5 h-1.5 bg-[var(--peach)] rounded-full animate-pulse motion-reduce:animate-none" />
+        <div className="absolute top-[25%] left-[65%] w-1 h-1 bg-[var(--sakura)] rounded-full animate-ping duration-1000 motion-reduce:animate-none" />
+        <div className="absolute top-[40%] left-[82%] w-1.5 h-1.5 bg-[var(--mint)] rounded-full animate-pulse motion-reduce:animate-none" />
         <div className="absolute top-[8%] left-[45%] w-1 h-1 bg-[var(--text-main)] rounded-full" />
-        <div className="absolute top-[35%] left-[28%] w-1 h-1 bg-[var(--text-main)] rounded-full animate-pulse" />
+        <div className="absolute top-[35%] left-[28%] w-1 h-1 bg-[var(--text-main)] rounded-full animate-pulse motion-reduce:animate-none" />
       </div>
 
       {/* Falling Sakura Petals Canvas */}

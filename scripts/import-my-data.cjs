@@ -122,6 +122,120 @@ for (const file of files) {
           bundle.papers.push(...content);
           console.log(`✓ Read ${content.length} paper(s) from ${file}`);
         }
+      } else if (content.exporter === 'Testbook Mock Test Exporter' || (content.test && content.sections)) {
+        const testTitle = content.test?.title || file.replace('.json', '');
+        const mockSections = [];
+        let totalAttempted = 0;
+        let totalCorrect = 0;
+        let totalWrong = 0;
+        let totalUnattempted = 0;
+        let totalNetScore = 0;
+        let mistakeCount = 0;
+
+        for (const sec of content.sections || []) {
+          let sAttempted = 0;
+          let sCorrect = 0;
+          let sWrong = 0;
+          let sUnattempted = 0;
+          let sNetScore = 0;
+
+          for (const q of sec.questions || []) {
+            const correctText = q.correctAnswer?.[0]?.text?.replace(/<[^>]*>/g, '').trim() || '';
+            const userText = q.selectedAnswer?.replace(/<[^>]*>/g, '').trim();
+            const isAttempted = userText && userText !== 'Left unattempted';
+            const isCorrect = isAttempted && userText === correctText;
+            const isWrong = isAttempted && !isCorrect;
+
+            const posMarks = q.marks || q.rawQuestion?.posMarks || 1;
+            const negMarks = q.rawQuestion?.negMarks || 0.25;
+
+            if (isCorrect) {
+              sCorrect++;
+              sAttempted++;
+              sNetScore += posMarks;
+            } else if (isWrong) {
+              sWrong++;
+              sAttempted++;
+              sNetScore -= negMarks;
+            } else {
+              sUnattempted++;
+            }
+
+            if (isWrong || !isAttempted) {
+              bundle.mistakes.push({
+                mockName: testTitle,
+                sectionId: sec.sectionName?.toLowerCase().includes('english')
+                  ? 'english'
+                  : sec.sectionName?.toLowerCase().includes('quant')
+                  ? 'quant'
+                  : 'reasoning',
+                sectionName: sec.sectionName || 'General',
+                topic: q.topic || q.subject || 'General',
+                questionNumber: q.questionNumber,
+                questionText: q.question || `Question ${q.questionNumber}`,
+                myAnswer: userText || 'Left unattempted',
+                correctAnswer: correctText,
+                resultType: isWrong ? 'Wrong' : 'Skipped',
+                errorTypes: ['Unclassified'],
+                timeSpentSeconds: 60,
+                idealTimeSeconds: 40,
+                whatWentWrong: q.solution ? 'Missed in test attempt.' : 'Unattempted question.',
+                correctSolution: q.solution || 'Refer to solution.',
+                betterApproach: 'Review standard method.',
+                ruleToRemember: q.solution ? q.solution.slice(0, 120) : 'Review core concepts.',
+                difficulty: 'Medium',
+                tags: ['testbook-export'],
+                status: 'New',
+                interval: 1,
+                consecutiveCorrect: 0,
+                nextReviewDate: new Date().toISOString().split('T')[0],
+                history: [],
+                createdAt: new Date().toISOString().split('T')[0]
+              });
+              mistakeCount++;
+            }
+          }
+
+          totalAttempted += sAttempted;
+          totalCorrect += sCorrect;
+          totalWrong += sWrong;
+          totalUnattempted += sUnattempted;
+          totalNetScore += sNetScore;
+
+          mockSections.push({
+            sectionId: sec.sectionName?.toLowerCase().replace(/[^a-z0-9]/g, '_') || 'section',
+            sectionName: sec.sectionName || 'Section',
+            attempted: sAttempted,
+            correct: sCorrect,
+            wrong: sWrong,
+            unattempted: sUnattempted,
+            marksLostNegative: Number((sWrong * 0.25).toFixed(2)),
+            netScore: Number(sNetScore.toFixed(2)),
+            accuracy: sAttempted > 0 ? Number(((sCorrect / sAttempted) * 100).toFixed(1)) : 0,
+            cutoff: 10,
+            targetScore: 20,
+            timeSpentSeconds: sAttempted * 60
+          });
+        }
+
+        bundle.mocks.push({
+          name: testTitle,
+          date: content.exportedAt ? content.exportedAt.slice(0, 10) : new Date().toISOString().split('T')[0],
+          source: 'Testbook',
+          attemptType: 'mock',
+          sections: mockSections,
+          totalAttempted,
+          totalCorrect,
+          totalWrong,
+          totalUnattempted,
+          totalMarksLostNegative: Number((totalWrong * 0.25).toFixed(2)),
+          totalNetScore: Number(totalNetScore.toFixed(2)),
+          overallAccuracy: totalAttempted > 0 ? Number(((totalCorrect / totalAttempted) * 100).toFixed(1)) : 0,
+          totalTimeSpentSeconds: totalAttempted * 60,
+          notes: `Imported from Testbook Full Export (${content.exportSummary?.questions || 0} questions)`
+        });
+
+        console.log(`✓ Parsed Testbook Full Export: ${testTitle} (${mockSections.length} sections, ${mistakeCount} mistakes created)`);
       } else if (content.mocks || content.mistakes) {
         if (content.mocks) bundle.mocks.push(...content.mocks);
         if (content.mistakes) bundle.mistakes.push(...content.mistakes);
