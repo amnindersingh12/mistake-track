@@ -11,6 +11,7 @@
   --mint: #34d399;
   --rose: #f43f5e;
   --indigo: #818cf8;
+  --violet: #a855f7;
   --shadow-manga: 3px 3px 0px #090810;
   --shadow-sm: 2px 2px 0px #090810;
   --radius-panel: 12px;
@@ -29,6 +30,8 @@
     --peach: #f99842;
     --mint: #10b981;
     --rose: #e11d48;
+    --indigo: #6366f1;
+    --violet: #9333ea;
     --shadow-manga: 3px 3px 0px #211c38;
     --shadow-sm: 2px 2px 0px #211c38;
   }
@@ -226,6 +229,129 @@ body {
   text-overflow: ellipsis;
 }
 
+/* Full Mock Scanner Hero Button */
+.scanner-hero-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.full-mock-hero-btn {
+  background: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%);
+  color: #ffffff;
+  padding: 10px 12px;
+  border: 2px solid var(--ink-border);
+  box-shadow: var(--shadow-manga);
+}
+
+.full-mock-hero-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #4f46e5 0%, #9333ea 50%, #db2777 100%);
+}
+
+/* Scan Progress Card */
+.progress-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--bg-surface);
+  border: 2px solid var(--violet);
+  box-shadow: var(--shadow-sm);
+  animation: fadeIn 0.18s ease-out;
+}
+
+.progress-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.progress-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.progress-title {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.badge-section {
+  font-size: 9.5px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(168, 85, 247, 0.2);
+  color: #c084fc;
+  border: 1px solid var(--violet);
+  max-width: 110px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.progress-counter-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.scan-counter {
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.scan-percent {
+  font-weight: 800;
+  color: var(--sakura);
+}
+
+.progress-track {
+  width: 100%;
+  height: 8px;
+  background: var(--bg-panel);
+  border: 1.5px solid var(--ink-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--violet), var(--sakura));
+  transition: width 0.15s ease-out;
+}
+
+.progress-controls {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.ctrl-btn {
+  padding: 5px 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  border-radius: 6px;
+}
+
+.ctrl-pause {
+  background: var(--bg-panel);
+  color: var(--peach);
+}
+
+.ctrl-resume {
+  background: var(--bg-panel);
+  color: var(--mint);
+}
+
+.ctrl-cancel {
+  background: var(--bg-panel);
+  color: var(--rose);
+}
+
 /* Actions Panel */
 .actions-panel {
   display: flex;
@@ -306,11 +432,6 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
   box-shadow: none;
-}
-
-.primary-btn {
-  background: linear-gradient(135deg, var(--sakura), #f43f5e);
-  color: #ffffff;
 }
 
 .secondary-btn {
@@ -419,4 +540,3 @@ body {
   from { opacity: 0; transform: translateY(-3px); }
   to { opacity: 1; transform: translateY(0); }
 }
-

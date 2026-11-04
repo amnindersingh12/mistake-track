@@ -1,5 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { ExamSettings, MockTest, MistakeEntry, StudyBridgeImportPayload, ResultType, Difficulty } from '../types';
+import {
+  ExamSettings,
+  MockTest,
+  MistakeEntry,
+  StudyBridgeImportPayload,
+  ResultType,
+  Difficulty,
+  FullMockScanResult,
+  SectionPerformance
+} from '../types';
 import { db } from '../db/db';
 import {
   getMockCsvTemplate,
@@ -11,6 +20,7 @@ import {
   parseTestbookPastedText,
   parseTimeString,
   QUESTION_MISTAKE_REASONS,
+  getScannedQuestionStatus,
   ParsedPasteResult
 } from '../utils/dataIntake';
 import { Mascot } from './Mascot';
@@ -28,7 +38,10 @@ import {
   Edit2,
   ExternalLink,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Layers,
+  Search,
+  BookOpen
 } from 'lucide-react';
 
 interface DataIntakeModalProps {
@@ -40,7 +53,7 @@ interface DataIntakeModalProps {
   onImportAck?: (id: string, status: 'saved' | 'cancelled') => void;
 }
 
-type TabType = 'paste' | 'csv-mock' | 'csv-mistake' | 'json';
+type TabType = 'paste' | 'csv-mock' | 'csv-mistake' | 'json' | 'fullscan';
 
 export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
   isOpen,
@@ -62,9 +75,44 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [fileName, setFileName] = useState<string>('');
 
+  // Full Mock Scan State
+  const [fullScanData, setFullScanData] = useState<FullMockScanResult | null>(null);
+  const [fullScanMockName, setFullScanMockName] = useState('');
+  const [fullScanDate, setFullScanDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedMistakeNumbers, setSelectedMistakeNumbers] = useState<Set<number>>(new Set());
+  const [questionMistakeReasons, setQuestionMistakeReasons] = useState<Record<number, string[]>>({});
+  const [selectedSectionFilter, setSelectedSectionFilter] = useState('All');
+  const [questionSearch, setQuestionSearch] = useState('');
+  const [expandedQuestionNumber, setExpandedQuestionNumber] = useState<number | null>(null);
+  const [isDuplicateMock, setIsDuplicateMock] = useState(false);
+  const [isSavingFullScan, setIsSavingFullScan] = useState(false);
+
   // Handle incoming StudyBridge payload
   useEffect(() => {
     if (isOpen && initialImportPayload) {
+      // Mode D: Full Mock Scan
+      if (initialImportPayload.mode === 'fullscan' && initialImportPayload.scanData) {
+        const sd = initialImportPayload.scanData;
+        setFullScanData(sd);
+        setFullScanMockName(sd.mockName || sd.examName || initialImportPayload.source?.title || 'Testbook Full Mock');
+        setFullScanDate(initialImportPayload.capturedAt ? initialImportPayload.capturedAt.split('T')[0] : new Date().toISOString().split('T')[0]);
+
+        const initialCandidateSet = new Set<number>();
+        const initialReasons: Record<number, string[]> = {};
+        (sd.questions || []).forEach((q) => {
+          const status = getScannedQuestionStatus(q);
+          if (q.isMistakeCandidate ?? (status === 'Wrong' || status === 'Skipped')) {
+            initialCandidateSet.add(q.questionNumber);
+            initialReasons[q.questionNumber] = ['Conceptual gap'];
+          }
+        });
+
+        setSelectedMistakeNumbers(initialCandidateSet);
+        setQuestionMistakeReasons(initialReasons);
+        setActiveTab('fullscan');
+        return;
+      }
+
       setActiveTab('paste');
       setRawPastedText(initialImportPayload.text || '');
 
@@ -186,6 +234,25 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, activeTab, parsedPaste, rawPastedText]);
+
+  // Check for duplicate mocks in Dexie by name and date
+  useEffect(() => {
+    async function checkDuplicate() {
+      if (!fullScanMockName.trim() || !fullScanDate) {
+        setIsDuplicateMock(false);
+        return;
+      }
+      try {
+        const matches = await db.mocks.where('name').equalsIgnoreCase(fullScanMockName.trim()).toArray();
+        setIsDuplicateMock(matches.some((m) => m.date === fullScanDate));
+      } catch {
+        setIsDuplicateMock(false);
+      }
+    }
+    if (activeTab === 'fullscan') {
+      checkDuplicate();
+    }
+  }, [fullScanMockName, fullScanDate, activeTab]);
 
   if (!isOpen) return null;
 
@@ -320,6 +387,126 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
     }
     onSuccess(`Imported "${parsedPaste.mockName}" successfully!`);
     onClose();
+  };
+
+  // Full Mock Scan Save Handler (ACID Transaction across db.mocks & db.mistakes)
+  const handleSaveFullScan = async () => {
+    if (!fullScanData) return;
+    setIsSavingFullScan(true);
+    try {
+      const sections: SectionPerformance[] = (fullScanData.sections || []).map((sec) => {
+        const secConf = settings.sections.find(
+          (s) => s.name.toLowerCase() === sec.sectionName.toLowerCase() || s.id.toLowerCase() === sec.sectionName.toLowerCase()
+        ) || { totalQuestions: sec.questionCount, marksPerCorrect: 1, negativeMark: 0.25, id: sec.sectionName.toLowerCase().replace(/[^a-z0-9]/g, '_') };
+
+        const attempted = sec.correctCount + sec.incorrectCount;
+        const unattempted = sec.skippedCount ?? Math.max(0, sec.questionCount - attempted);
+        const marksLost = Number((sec.incorrectCount * secConf.negativeMark).toFixed(2));
+        const net = sec.marks !== undefined ? sec.marks : Number((sec.correctCount * secConf.marksPerCorrect - marksLost).toFixed(2));
+        const acc = attempted > 0 ? Number(((sec.correctCount / attempted) * 100).toFixed(1)) : 0;
+
+        return {
+          sectionId: secConf.id || sec.sectionName.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+          sectionName: sec.sectionName,
+          attempted,
+          correct: sec.correctCount,
+          wrong: sec.incorrectCount,
+          timeSpentSeconds: 0,
+          unattempted,
+          netScore: net,
+          accuracy: acc,
+          marksLostNegative: marksLost
+        };
+      });
+
+      const totAtt = sections.reduce((s, x) => s + x.attempted, 0);
+      const totCorr = sections.reduce((s, x) => s + x.correct, 0);
+      const totWrong = sections.reduce((s, x) => s + x.wrong, 0);
+      const totUnatt = sections.reduce((s, x) => s + x.unattempted, 0);
+      const totNet = fullScanData.overallScore !== undefined ? fullScanData.overallScore : Number(sections.reduce((s, x) => s + x.netScore, 0).toFixed(2));
+      const totAcc = totAtt > 0 ? Number(((totCorr / totAtt) * 100).toFixed(1)) : 0;
+      const totNeg = Number(sections.reduce((s, x) => s + x.marksLostNegative, 0).toFixed(2));
+
+      const mockRecord: Omit<MockTest, 'id'> = {
+        name: fullScanMockName.trim() || 'Testbook Full Mock Scan',
+        date: fullScanDate || new Date().toISOString().split('T')[0],
+        source: initialImportPayload?.source?.platform || 'Testbook',
+        attemptType: 'mock',
+        sections,
+        totalAttempted: totAtt,
+        totalCorrect: totCorr,
+        totalWrong: totWrong,
+        totalUnattempted: totUnatt,
+        totalNetScore: totNet,
+        overallAccuracy: totAcc,
+        totalMarksLostNegative: totNeg,
+        totalTimeSpentSeconds: Math.round((fullScanData.scanDurationMs || 0) / 1000),
+        notes: `Imported via StudyBridge V4 Full Mock Scan from ${initialImportPayload?.source?.title || 'Testbook'}`
+      };
+
+      const selectedQuestions = (fullScanData.questions || []).filter((q) => selectedMistakeNumbers.has(q.questionNumber));
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      // Single ACID transaction saving mock and selected mistakes
+      await db.transaction('rw', [db.mocks, db.mistakes], async () => {
+        const mockId = (await db.mocks.add(mockRecord as MockTest)) as number;
+
+        if (selectedQuestions.length > 0) {
+          const mistakeEntries: MistakeEntry[] = selectedQuestions.map((q) => {
+            const qStatus = getScannedQuestionStatus(q);
+            const resultType: ResultType = qStatus === 'Skipped' ? 'Left unattempted' : qStatus === 'Correct' ? 'Correct-but-slow' : 'Wrong';
+            const reasons = questionMistakeReasons[q.questionNumber] || ['Conceptual gap'];
+            const formattedOptions = q.options?.map((opt) =>
+              `${opt.index + 1}. ${opt.text}${opt.isCorrect ? ' [Correct]' : ''}${opt.isSelected ? ' [Selected]' : ''}`
+            ).join('\n') || '';
+
+            return {
+              mockId,
+              mockName: mockRecord.name,
+              attemptType: 'mock',
+              sectionId: q.section.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+              sectionName: q.section,
+              topic: q.topic || q.section || 'General',
+              subtopic: '',
+              questionNumber: q.questionNumber,
+              questionText: q.questionText + (formattedOptions ? '\n\nOptions:\n' + formattedOptions : ''),
+              questionImage: q.questionImage,
+              myAnswer: q.selectedAnswer || (qStatus === 'Skipped' ? 'Left unattempted' : 'Not marked'),
+              correctAnswer: q.correctAnswer || (q.explanation ? 'See explanation' : 'Not captured'),
+              resultType,
+              errorTypes: reasons.length > 0 ? reasons : ['Conceptual gap'],
+              timeSpentSeconds: q.timeTaken ? parseTimeString(q.timeTaken).seconds : 60,
+              idealTimeSeconds: q.avgTime ? parseTimeString(q.avgTime).seconds : 45,
+              whatWentWrong: q.statusBadge ? `Status: ${q.statusBadge}` : 'Full scan mistake capture',
+              correctSolution: q.explanation || '',
+              betterApproach: '',
+              ruleToRemember: `Review key concept in ${q.topic || q.section}.`,
+              difficulty: 'Medium',
+              tags: ['studybridge-v4', 'fullscan', q.section.toLowerCase().replace(/[^a-z0-9]/g, '-')],
+              status: 'New',
+              interval: 1,
+              consecutiveCorrect: 0,
+              nextReviewDate: todayStr,
+              history: [],
+              createdAt: todayStr
+            };
+          });
+
+          await db.mistakes.bulkAdd(mistakeEntries);
+        }
+      });
+
+      if (initialImportPayload?.id && onImportAck) {
+        onImportAck(initialImportPayload.id, 'saved');
+      }
+      onSuccess(`Successfully saved "${mockRecord.name}" with ${selectedQuestions.length} mistake(s)!`);
+      onClose();
+    } catch (err: any) {
+      console.error('Failed to save fullscan mock:', err);
+      alert(`Save failed: ${err?.message || 'Database error'}`);
+    } finally {
+      setIsSavingFullScan(false);
+    }
   };
 
   // CSV Mock File Handler
@@ -627,6 +814,22 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
 
         {/* Tab Switcher */}
         <div className="flex border-b-2 border-[var(--ink-border)] bg-[var(--bg-surface)] text-xs font-bold overflow-x-auto">
+          {(fullScanData || activeTab === 'fullscan') && (
+            <button
+              onClick={() => {
+                setActiveTab('fullscan');
+                setPreviewData(null);
+              }}
+              className={`px-4 py-3 border-r-2 border-[var(--ink-border)] flex items-center gap-2 whitespace-nowrap transition-colors ${
+                activeTab === 'fullscan'
+                  ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white font-extrabold'
+                  : 'hover:bg-[var(--bg-panel)] text-[var(--sakura)]'
+              }`}
+            >
+              <Layers className="w-4 h-4" />
+              <span>Full Mock Scan ({fullScanData?.totalQuestions || 0} Qs)</span>
+            </button>
+          )}
           <button
             onClick={() => {
               setActiveTab('paste');
@@ -1386,6 +1589,425 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
                   </button>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* TAB 5: Full Mock Scan Review */}
+          {activeTab === 'fullscan' && fullScanData && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              {/* Top Banner with Provenance */}
+              <div className="p-4 rounded-xl bg-gradient-to-r from-purple-950/50 via-slate-900 to-indigo-950/50 border-2 border-purple-500/40 text-xs flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-md">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 font-extrabold text-sm text-purple-200">
+                    <Layers className="w-4 h-4 text-pink-400" />
+                    <span>StudyBridge V4 Full Mock Scan Preview</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/20 border border-purple-400/40 text-purple-300 font-mono">
+                      {fullScanData.totalQuestions} Questions Collected
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-purple-300/80">
+                    Source: <strong>{initialImportPayload?.source?.title || 'Testbook'}</strong>
+                    {fullScanData.scanDurationMs ? ` • Scan duration: ${(fullScanData.scanDurationMs / 1000).toFixed(1)}s` : ''}
+                  </p>
+                </div>
+
+                {isDuplicateMock && (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/50 text-amber-300 text-xs font-bold">
+                    <AlertTriangle className="w-4 h-4 text-amber-400" />
+                    <span>A mock with this name & date already exists!</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Editable Mock Meta Card */}
+              <div className="p-4 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] space-y-4">
+                <h4 className="font-display text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  Mock Test Overview & Metadata
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-[var(--text-muted)] block mb-1">
+                      Mock Test Name
+                    </label>
+                    <input
+                      type="text"
+                      value={fullScanMockName}
+                      onChange={(e) => setFullScanMockName(e.target.value)}
+                      className="w-full text-xs font-bold p-2.5 rounded-lg bg-[var(--bg-panel)] border-2 border-[var(--ink-border)] focus:outline-none focus:ring-2 focus:ring-[var(--sakura)]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-[var(--text-muted)] block mb-1">
+                      Attempt Date
+                    </label>
+                    <input
+                      type="date"
+                      value={fullScanDate}
+                      onChange={(e) => setFullScanDate(e.target.value)}
+                      className="w-full text-xs font-bold p-2.5 rounded-lg bg-[var(--bg-panel)] border-2 border-[var(--ink-border)] focus:outline-none focus:ring-2 focus:ring-[var(--sakura)]"
+                    />
+                  </div>
+                </div>
+
+                {/* Score & Derived Metrics Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+                  <div className="p-2.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--ink-border)]">
+                    <span className="text-[10px] text-[var(--text-muted)] font-bold block">Overall Marks</span>
+                    <span className="text-base font-extrabold text-[var(--peach)] font-mono">
+                      {fullScanData.overallScore ?? '—'}
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--ink-border)]">
+                    <span className="text-[10px] text-[var(--text-muted)] font-bold block">Total Questions</span>
+                    <span className="text-base font-extrabold text-[var(--text-main)] font-mono">
+                      {fullScanData.totalQuestions}
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--ink-border)]">
+                    <span className="text-[10px] text-[var(--text-muted)] font-bold block">Selected Mistakes</span>
+                    <span className="text-base font-extrabold text-[var(--rose)] font-mono">
+                      {selectedMistakeNumbers.size}
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-[var(--bg-panel)] border border-[var(--ink-border)]">
+                    <span className="text-[10px] text-[var(--text-muted)] font-bold block">Sections</span>
+                    <span className="text-base font-extrabold text-[var(--mint)] font-mono">
+                      {fullScanData.sections?.length || 0}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section Performance Summary Table */}
+              {fullScanData.sections && fullScanData.sections.length > 0 && (
+                <div className="p-4 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] space-y-3">
+                  <h4 className="font-display text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                    Section Breakdown
+                  </h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left">
+                      <thead>
+                        <tr className="border-b border-[var(--ink-border)] text-[var(--text-muted)]">
+                          <th className="py-2 px-2.5">Section</th>
+                          <th className="py-2 px-2.5 text-center">Questions</th>
+                          <th className="py-2 px-2.5 text-center text-[var(--mint)]">Correct</th>
+                          <th className="py-2 px-2.5 text-center text-[var(--rose)]">Incorrect</th>
+                          <th className="py-2 px-2.5 text-center text-[var(--peach)]">Skipped</th>
+                          <th className="py-2 px-2.5 text-right font-mono">Marks</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--ink-border)] font-mono">
+                        {fullScanData.sections.map((sec, idx) => (
+                          <tr key={`${sec.sectionName}-${idx}`} className="hover:bg-[var(--bg-panel)]/40 transition-colors">
+                            <td className="py-2 px-2.5 font-sans font-bold text-[var(--text-main)]">{sec.sectionName}</td>
+                            <td className="py-2 px-2.5 text-center">{sec.questionCount}</td>
+                            <td className="py-2 px-2.5 text-center text-[var(--mint)]">{sec.correctCount}</td>
+                            <td className="py-2 px-2.5 text-center text-[var(--rose)]">{sec.incorrectCount}</td>
+                            <td className="py-2 px-2.5 text-center text-[var(--peach)]">{sec.skippedCount}</td>
+                            <td className="py-2 px-2.5 text-right font-bold text-[var(--peach)]">{sec.marks}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Question Library Browser & Mistake Selector */}
+              <div className="p-4 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <h4 className="font-display text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-2">
+                      <BookOpen className="w-4 h-4 text-[var(--sakura)]" />
+                      <span>Question Library & Mistake Tagger</span>
+                    </h4>
+                    <p className="text-[11px] text-[var(--text-muted)]">
+                      Select questions to import as mistakes in your Spaced Repetition Notebook.
+                    </p>
+                  </div>
+
+                  {/* Bulk Select / Deselect Controls */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newSet = new Set(selectedMistakeNumbers);
+                        (fullScanData.questions || []).forEach((q) => {
+                          const status = getScannedQuestionStatus(q);
+                          if (status === 'Wrong' || status === 'Skipped') {
+                            newSet.add(q.questionNumber);
+                          }
+                        });
+                        setSelectedMistakeNumbers(newSet);
+                      }}
+                      className="px-2.5 py-1 text-[10.5px] font-bold rounded-md bg-[var(--bg-panel)] border border-[var(--ink-border)] text-[var(--text-main)] hover:border-[var(--sakura)] transition-colors"
+                    >
+                      Select All Incorrect
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMistakeNumbers(new Set())}
+                      className="px-2.5 py-1 text-[10.5px] font-bold rounded-md bg-[var(--bg-panel)] border border-[var(--ink-border)] text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors"
+                    >
+                      Clear Selection
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filter and Search Bar */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                  <div className="relative flex-1">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                    <input
+                      type="text"
+                      placeholder="Search question text, numbers, or topics..."
+                      value={questionSearch}
+                      onChange={(e) => setQuestionSearch(e.target.value)}
+                      className="w-full text-xs pl-8 pr-3 py-2 rounded-lg bg-[var(--bg-panel)] border border-[var(--ink-border)] focus:outline-none focus:ring-1 focus:ring-[var(--sakura)] text-[var(--text-main)]"
+                    />
+                  </div>
+
+                  {/* Section Tabs */}
+                  <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
+                    {['All', ...(fullScanData.sections || []).map((s) => s.sectionName)].map((sec) => (
+                      <button
+                        key={sec}
+                        type="button"
+                        onClick={() => setSelectedSectionFilter(sec)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${
+                          selectedSectionFilter === sec
+                            ? 'bg-[var(--sakura)] text-white shadow-sm'
+                            : 'bg-[var(--bg-panel)] text-[var(--text-muted)] border border-[var(--ink-border)] hover:text-[var(--text-main)]'
+                        }`}
+                      >
+                        {sec}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Question List */}
+                <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
+                  {(fullScanData.questions || [])
+                    .filter((q) => {
+                      if (selectedSectionFilter !== 'All' && q.section !== selectedSectionFilter) return false;
+                      if (!questionSearch.trim()) return true;
+                      const term = questionSearch.toLowerCase();
+                      return (
+                        String(q.questionNumber).includes(term) ||
+                        q.questionText.toLowerCase().includes(term) ||
+                        (q.explanation && q.explanation.toLowerCase().includes(term)) ||
+                        (q.section && q.section.toLowerCase().includes(term))
+                      );
+                    })
+                    .map((q) => {
+                      const isSelected = selectedMistakeNumbers.has(q.questionNumber);
+                      const status = getScannedQuestionStatus(q);
+                      const isExpanded = expandedQuestionNumber === q.questionNumber;
+                      const reasons = questionMistakeReasons[q.questionNumber] || ['Conceptual gap'];
+
+                      return (
+                        <div
+                          key={`q-${q.section}-${q.questionNumber}`}
+                          className={`p-3 rounded-xl border-2 transition-all ${
+                            isSelected
+                              ? 'bg-purple-950/20 border-purple-400/60 dark:bg-purple-950/40'
+                              : 'bg-[var(--bg-panel)] border-[var(--ink-border)] opacity-85 hover:opacity-100'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            {/* Checkbox & Header */}
+                            <label className="flex items-start gap-2.5 cursor-pointer flex-1">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  const next = new Set(selectedMistakeNumbers);
+                                  if (e.target.checked) {
+                                    next.add(q.questionNumber);
+                                    if (!questionMistakeReasons[q.questionNumber]) {
+                                      setQuestionMistakeReasons({
+                                        ...questionMistakeReasons,
+                                        [q.questionNumber]: ['Conceptual gap']
+                                      });
+                                    }
+                                  } else {
+                                    next.delete(q.questionNumber);
+                                  }
+                                  setSelectedMistakeNumbers(next);
+                                }}
+                                className="mt-1 w-4 h-4 rounded border-2 border-[var(--ink-border)] text-purple-600 focus:ring-purple-500 cursor-pointer"
+                              />
+
+                              <div className="space-y-1 flex-1">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="font-extrabold text-xs text-[var(--text-main)] font-mono">
+                                    Q{q.questionNumber}
+                                  </span>
+                                  <span className="text-[10px] px-2 py-0.5 rounded bg-[var(--bg-surface)] border border-[var(--ink-border)] text-[var(--text-muted)] font-semibold">
+                                    {q.section}
+                                  </span>
+                                  <span
+                                    className={`text-[10px] px-2 py-0.5 rounded font-bold ${
+                                      status === 'Correct'
+                                        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                        : status === 'Wrong'
+                                        ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+                                        : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                                    }`}
+                                  >
+                                    {status}
+                                  </span>
+                                  <span
+                                    className={`text-[9.5px] px-1.5 py-0.5 rounded font-mono ${
+                                      q.solutionStatus === 'captured'
+                                        ? 'bg-purple-500/15 text-purple-300'
+                                        : 'bg-slate-700/30 text-slate-400'
+                                    }`}
+                                  >
+                                    {q.solutionStatus === 'captured' ? '✓ Solution' : 'No Solution'}
+                                  </span>
+                                  {q.marks !== undefined && (
+                                    <span className="text-[10px] font-mono text-[var(--text-muted)] ml-auto">
+                                      Marks: {q.marks}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <p className="text-xs text-[var(--text-main)] line-clamp-2 leading-relaxed">
+                                  {q.questionText}
+                                </p>
+                              </div>
+                            </label>
+
+                            {/* Expand / Collapse Button */}
+                            <button
+                              type="button"
+                              onClick={() => setExpandedQuestionNumber(isExpanded ? null : q.questionNumber)}
+                              className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors"
+                              title={isExpanded ? 'Collapse question details' : 'Expand question details'}
+                            >
+                              {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                            </button>
+                          </div>
+
+                          {/* Expanded Details: Options & Explanation */}
+                          {isExpanded && (
+                            <div className="mt-3 pt-3 border-t border-[var(--ink-border)] space-y-2.5 text-xs">
+                              {q.options && q.options.length > 0 && (
+                                <div className="space-y-1">
+                                  <span className="text-[10.5px] font-bold text-[var(--text-muted)] uppercase tracking-wider block">
+                                    Options:
+                                  </span>
+                                  <div className="grid grid-cols-1 gap-1">
+                                    {q.options.map((opt) => (
+                                      <div
+                                        key={opt.index}
+                                        className={`p-2 rounded-lg text-xs flex items-center justify-between border ${
+                                          opt.isCorrect
+                                            ? 'bg-emerald-950/20 border-emerald-500/40 text-emerald-300 font-semibold'
+                                            : opt.isSelected
+                                            ? 'bg-rose-950/20 border-rose-500/40 text-rose-300'
+                                            : 'bg-[var(--bg-surface)] border-[var(--ink-border)] text-[var(--text-main)]'
+                                        }`}
+                                      >
+                                        <span>
+                                          <strong className="mr-1.5">{opt.index + 1}.</strong> {opt.text}
+                                        </span>
+                                        {opt.isCorrect && <span className="text-[10px] text-emerald-400 font-bold">✓ Correct</span>}
+                                        {opt.isSelected && !opt.isCorrect && <span className="text-[10px] text-rose-400 font-bold">✗ Selected</span>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {q.explanation && (
+                                <div className="p-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--ink-border)] space-y-1">
+                                  <span className="text-[10.5px] font-bold text-[var(--peach)] uppercase tracking-wider block">
+                                    Explanation:
+                                  </span>
+                                  <p className="text-xs text-[var(--text-main)] whitespace-pre-line leading-relaxed">
+                                    {q.explanation}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Mistake Classification Chips (Shown when checked) */}
+                          {isSelected && (
+                            <div className="mt-3 pt-2.5 border-t border-purple-500/30 space-y-1.5">
+                              <span className="text-[10.5px] font-bold text-purple-300 block">
+                                Mistake Reason Classification:
+                              </span>
+                              <div className="flex flex-wrap gap-1.5">
+                                {QUESTION_MISTAKE_REASONS.map((reason) => {
+                                  const hasReason = reasons.includes(reason);
+                                  return (
+                                    <button
+                                      key={reason}
+                                      type="button"
+                                      onClick={() => {
+                                        const current = questionMistakeReasons[q.questionNumber] || [];
+                                        const updated = current.includes(reason)
+                                          ? current.filter((r) => r !== reason)
+                                          : [...current, reason];
+                                        setQuestionMistakeReasons({
+                                          ...questionMistakeReasons,
+                                          [q.questionNumber]: updated.length > 0 ? updated : ['Conceptual gap']
+                                        });
+                                      }}
+                                      className={`px-2.5 py-1 rounded-md text-[10.5px] font-bold transition-all ${
+                                        hasReason
+                                          ? 'bg-purple-600 text-white shadow-sm scale-102'
+                                          : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border border-[var(--ink-border)] hover:border-purple-400'
+                                      }`}
+                                    >
+                                      {reason}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+
+              {/* Bottom Confirmation Bar */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t-2 border-[var(--ink-border)]">
+                <div className="text-xs text-[var(--text-muted)]">
+                  <span>Saving will create <strong>1 Mock</strong> and <strong>{selectedMistakeNumbers.size} Mistakes</strong> in your database.</span>
+                </div>
+
+                <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="px-4 py-2.5 rounded-xl border-2 border-[var(--ink-border)] text-xs font-bold text-[var(--text-muted)] hover:bg-[var(--bg-surface)] transition-colors flex-1 sm:flex-initial"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveFullScan}
+                    disabled={isSavingFullScan || !fullScanMockName.trim()}
+                    className="manga-btn px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 via-pink-600 to-rose-600 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 flex-1 sm:flex-initial"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>
+                      {isSavingFullScan
+                        ? 'Saving to Database...'
+                        : `Confirm & Save Mock (${selectedMistakeNumbers.size} Mistakes)`}
+                    </span>
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>

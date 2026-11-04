@@ -25,6 +25,8 @@
   "host_permissions": [
     "http://localhost/*",
     "http://127.0.0.1/*",
+    "http://localhost:8787/*",
+    "http://127.0.0.1:8787/*",
     "*://*.testbook.com/*"
   ],
   "content_scripts": [
@@ -45,7 +47,8 @@
         "http://127.0.0.1/*"
       ],
       "js": [
-        "content/testbook-adapter.js"
+        "content/testbook-adapter.js",
+        "content/full-mock-scanner.js"
       ],
       "run_at": "document_idle"
     }
@@ -57,4 +60,3 @@
     "128": "icons/icon-128.png"
   }
 }
-

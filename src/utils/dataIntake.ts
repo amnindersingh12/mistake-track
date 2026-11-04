@@ -8,7 +8,9 @@ import {
   Difficulty,
   StudyBridgeImportPayload,
   StudyBridgeImportMessage,
-  StudyBridgeSourceMetadata
+  StudyBridgeSourceMetadata,
+  StudyBridgeMode,
+  FullMockScanResult
 } from '../types';
 
 /**
@@ -198,6 +200,35 @@ export const QUESTION_MISTAKE_REASONS = [
 export type QuestionMistakeReason = typeof QUESTION_MISTAKE_REASONS[number];
 
 /**
+ * Classifies the attempt status of a scanned question.
+ */
+export function getScannedQuestionStatus(q: {
+  statusBadge?: string;
+  selectedAnswer?: string;
+  correctAnswer?: string;
+  marks?: number;
+}): 'Correct' | 'Wrong' | 'Skipped' {
+  if (q.statusBadge) {
+    const lower = q.statusBadge.toLowerCase();
+    if (lower.includes('correct') && !lower.includes('in') && !lower.includes('slow')) return 'Correct';
+    if (lower.includes('wrong') || lower.includes('incorrect')) return 'Wrong';
+    if (lower.includes('skip') || lower.includes('unattempt') || lower.includes('left')) return 'Skipped';
+  }
+  if (q.selectedAnswer === 'Left unattempted' || !q.selectedAnswer || q.selectedAnswer === 'Skipped') {
+    return 'Skipped';
+  }
+  if (q.correctAnswer && q.selectedAnswer) {
+    return q.selectedAnswer === q.correctAnswer ? 'Correct' : 'Wrong';
+  }
+  if (q.marks !== undefined) {
+    if (q.marks > 0) return 'Correct';
+    if (q.marks < 0) return 'Wrong';
+    return 'Skipped';
+  }
+  return 'Wrong';
+}
+
+/**
  * Validates StudyBridge incoming import payload against schema.
  */
 export function validateStudyBridgePayload(data: unknown): {
@@ -223,12 +254,21 @@ export function validateStudyBridgePayload(data: unknown): {
     return { isValid: false, error: 'Invalid or missing transfer ID.' };
   }
 
-  if (typeof p.text !== 'string' || !p.text.trim()) {
+  const rawText =
+    typeof p.text === 'string' && p.text.trim()
+      ? p.text
+      : p.mode === 'fullscan' && p.scanData?.mockName
+        ? p.scanData.mockName
+        : p.mode === 'fullscan'
+          ? 'StudyBridge Full Mock Scan'
+          : '';
+
+  if (!rawText.trim()) {
     return { isValid: false, error: 'Import payload text is empty.' };
   }
 
   // Enforce reasonable payload size limit (500 KB) to prevent DoS
-  if (p.text.length > 500_000) {
+  if (rawText.length > 500_000) {
     return { isValid: false, error: 'Payload exceeds maximum allowed size (500 KB).' };
   }
 
@@ -243,18 +283,38 @@ export function validateStudyBridgePayload(data: unknown): {
   };
 
   const capturedAt = typeof p.capturedAt === 'string' ? p.capturedAt : new Date().toISOString();
-  const mode = p.mode === 'summary' || p.mode === 'question' || p.mode === 'selection' ? p.mode : 'selection';
+  const mode: StudyBridgeMode =
+    p.mode === 'summary' || p.mode === 'question' || p.mode === 'selection' || p.mode === 'fullscan'
+      ? p.mode
+      : 'selection';
+
+  if (mode === 'fullscan') {
+    if (!p.scanData || typeof p.scanData !== 'object') {
+      return { isValid: false, error: 'Full scan payload is missing scanData.' };
+    }
+    const sd = p.scanData as Partial<FullMockScanResult>;
+    if (typeof sd.totalQuestions !== 'number' || isNaN(sd.totalQuestions) || sd.totalQuestions < 0) {
+      return { isValid: false, error: 'scanData must include a valid non-negative totalQuestions count.' };
+    }
+    if (!Array.isArray(sd.sections)) {
+      return { isValid: false, error: 'scanData must include a sections array.' };
+    }
+    if (!Array.isArray(sd.questions)) {
+      return { isValid: false, error: 'scanData must include a questions array.' };
+    }
+  }
 
   return {
     isValid: true,
     payload: {
       id: p.id,
       mode,
-      text: p.text,
+      text: rawText,
       source,
       capturedAt,
       summaryData: p.summaryData,
-      questionData: p.questionData
+      questionData: p.questionData,
+      scanData: p.scanData
     }
   };
 }

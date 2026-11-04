@@ -14,10 +14,10 @@
         <div class="logo-icon">SB</div>
         <div>
           <h1 class="title">StudyBridge</h1>
-          <p class="subtitle">Testbook Import Bridge</p>
+          <p class="subtitle">Testbook Scanner & Bridge</p>
         </div>
       </div>
-      <span class="version-tag">Manga v2.0</span>
+      <span class="version-tag">Manga v4.0</span>
     </header>
 
     <!-- Indicators Panel -->
@@ -59,7 +59,46 @@
       </div>
     </section>
 
-    <!-- 3 Action Modes Section -->
+    <!-- Full Mock Scanner Hero Panel -->
+    <section class="scanner-hero-section">
+      <button id="scan-entire-mock-btn" class="manga-btn full-mock-hero-btn" disabled>
+        <span class="btn-icon">⚡</span>
+        <div class="btn-text-wrap">
+          <span class="btn-title">Scan Entire Mock</span>
+          <span class="btn-desc" id="full-mock-hint">Auto-scan 130+ questions & full solutions</span>
+        </div>
+      </button>
+
+      <!-- Active Scan Progress Card -->
+      <div id="scan-progress-card" class="panel progress-card hidden">
+        <div class="progress-header">
+          <div class="progress-title-row">
+            <span class="progress-title">Scanning Mock Test...</span>
+            <span id="scan-section-badge" class="badge-section">Section 1</span>
+          </div>
+          <div class="progress-counter-row">
+            <span id="scan-question-counter" class="scan-counter font-mono">Q 0 / 130</span>
+            <span id="scan-percent-text" class="scan-percent font-mono">0%</span>
+          </div>
+        </div>
+
+        <div class="progress-track">
+          <div id="scan-progress-fill" class="progress-fill" style="width: 0%"></div>
+        </div>
+
+        <div class="progress-controls">
+          <button id="scan-pause-resume-btn" class="manga-btn ctrl-btn ctrl-pause">
+            <span id="pause-resume-icon">⏸</span>
+            <span id="pause-resume-label">Pause</span>
+          </button>
+          <button id="scan-cancel-btn" class="manga-btn ctrl-btn ctrl-cancel">
+            <span>✕ Cancel</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Quick Capture Modes -->
     <section class="actions-panel">
       <!-- Mode A: Import Result Summary -->
       <button id="import-summary-btn" class="manga-btn action-mode-btn primary-peach" disabled>

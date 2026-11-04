@@ -262,6 +262,102 @@ Explanation: Affirmative conversion applies.`,
       console.log('✓ Mode C selection mistake confirmed and saved.');
     }
 
+    // 6.5. Test Case 4: Mode D - One-Click Full Mock Scan Transfer
+    console.log('Step 6.5: Testing Mode D: One-Click Full Mock Scan Transfer...');
+    const fullScanPayload = {
+      id: `sb-mock-${Date.now()}`,
+      mode: 'fullscan',
+      text: 'StudyBridge V4 Full Mock Scan: SEBI Grade A 2025 Full Mock Test (IT Stream)',
+      source: {
+        platform: 'Testbook',
+        url: 'https://testbook.com/test-series/sebi-grade-a-it/solution',
+        title: 'SEBI Grade A 2025 Full Mock Test'
+      },
+      capturedAt: new Date().toISOString(),
+      scanData: {
+        mockName: 'SEBI Grade A 2025 Full Mock (IT)',
+        examName: 'SEBI Grade A IT Stream',
+        overallScore: 85.93,
+        totalQuestions: 130,
+        scanDurationMs: 4200,
+        sections: [
+          {
+            sectionName: 'Paper 1',
+            questionCount: 80,
+            correctCount: 27,
+            incorrectCount: 9,
+            skippedCount: 44,
+            marks: 30.93
+          },
+          {
+            sectionName: 'Paper 2',
+            questionCount: 50,
+            correctCount: 30,
+            incorrectCount: 10,
+            skippedCount: 10,
+            marks: 55.0
+          }
+        ],
+        questions: [
+          {
+            questionNumber: 1,
+            section: 'Paper 1',
+            questionText: 'Tamil Nadu (TN) recently received six additional Geographical Indication (GI) tags...',
+            options: [
+              { index: 0, text: 'Rameswaram Fish...' },
+              { index: 1, text: 'Puliyankudi Acid Lime...' },
+              { index: 2, text: 'Rameswaram Fish...' },
+              { index: 3, text: 'Puliyankudi Acid Lime, Panruti Cashew, and Virudhunagar Samba Vathal', isCorrect: true },
+              { index: 4, text: 'Chennai Masala...', isSelected: true }
+            ],
+            selectedAnswer: 'Left unattempted',
+            correctAnswer: 'Puliyankudi Acid Lime, Panruti Cashew, and Virudhunagar Samba Vathal',
+            marks: 0,
+            explanation: 'The correct answer is Puliyankudi Acid Lime, Panruti Cashew, and Virudhunagar Samba Vathal.',
+            statusBadge: 'Skipped',
+            solutionStatus: 'captured',
+            isMistakeCandidate: true
+          },
+          {
+            questionNumber: 2,
+            section: 'Paper 1',
+            questionText: 'In August 2025, Bajaj Allianz Life Insurance acquired a stake in...',
+            options: [
+              { index: 0, text: 'Option A' },
+              { index: 1, text: 'Option B', isCorrect: true }
+            ],
+            selectedAnswer: 'Option A',
+            correctAnswer: 'Option B',
+            marks: -0.25,
+            statusBadge: 'Wrong',
+            solutionStatus: 'captured',
+            isMistakeCandidate: true
+          }
+        ]
+      }
+    };
+
+    await page.evaluate((payload) => {
+      window.postMessage({
+        schemaVersion: 1,
+        type: 'STUDYBRIDGE_IMPORT',
+        source: 'STUDYBRIDGE_EXTENSION',
+        payload
+      }, '*');
+    }, fullScanPayload);
+
+    await page.waitForSelector('text/StudyBridge V4 Full Mock Scan Preview', { timeout: 6000 });
+    console.log('✓ Mode D Full Mock Scan preview modal opened.');
+    await page.screenshot({ path: path.join(ssDir, '04_studybridge_modeD_fullscan_modal.png') });
+    console.log('✓ Captured 04_studybridge_modeD_fullscan_modal.png');
+
+    const saveFullScanBtn = await page.$('button ::-p-text(Confirm & Save Mock)');
+    if (saveFullScanBtn) {
+      await saveFullScanBtn.click();
+      await sleep(1000);
+      console.log('✓ Mode D Full Mock Scan confirmed and saved to database.');
+    }
+
     // 7. Verify Dexie Database contents in browser IndexedDB
     console.log('Step 7: Verifying Dexie persistence in browser IndexedDB...');
     const dbCounts = await page.evaluate(async () => {

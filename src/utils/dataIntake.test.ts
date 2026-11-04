@@ -158,4 +158,184 @@ Rule to Remember: For two opposing rates, use AB/(B-A) directly.`;
       expect(parsed.rawText).toBe(mistakeSample);
     });
   });
+
+  describe('validateStudyBridgePayload - mode: fullscan', () => {
+    it('accepts valid fullscan payload with scanData', () => {
+      const msg = {
+        schemaVersion: 1,
+        type: 'STUDYBRIDGE_IMPORT',
+        payload: {
+          id: 'fullscan-001',
+          mode: 'fullscan',
+          text: 'SBI PO Live Mock 01 Full Scan',
+          source: {
+            platform: 'Testbook',
+            url: 'https://testbook.com/test-series/sbi-po/solution',
+            title: 'SBI PO Full Test'
+          },
+          capturedAt: '2026-11-04T12:00:00.000Z',
+          scanData: {
+            mockName: 'SBI PO Full Test 01',
+            examName: 'SBI PO Prelims',
+            overallScore: 68.5,
+            maxScore: 100,
+            totalQuestions: 100,
+            sections: [
+              {
+                sectionName: 'Quantitative Aptitude',
+                questionCount: 35,
+                correctCount: 25,
+                incorrectCount: 5,
+                skippedCount: 5,
+                marks: 23.75
+              }
+            ],
+            questions: [
+              {
+                questionNumber: 1,
+                section: 'Quantitative Aptitude',
+                questionText: 'What is 15% of 240?',
+                options: [
+                  { index: 0, text: '36', isCorrect: true, isSelected: true },
+                  { index: 1, text: '34' }
+                ],
+                selectedAnswer: '36',
+                correctAnswer: '36',
+                marks: 1,
+                solutionStatus: 'captured',
+                statusBadge: 'Correct'
+              },
+              {
+                questionNumber: 2,
+                section: 'Quantitative Aptitude',
+                questionText: 'Speed of train is 60 km/h...',
+                options: [
+                  { index: 0, text: '120 m' },
+                  { index: 1, text: '150 m', isCorrect: true }
+                ],
+                selectedAnswer: '120 m',
+                correctAnswer: '150 m',
+                marks: -0.25,
+                solutionStatus: 'captured',
+                statusBadge: 'Wrong'
+              }
+            ]
+          }
+        }
+      };
+
+      const res = validateStudyBridgePayload(msg);
+      expect(res.isValid).toBe(true);
+      expect(res.payload?.mode).toBe('fullscan');
+      expect(res.payload?.scanData?.totalQuestions).toBe(100);
+      expect(res.payload?.scanData?.questions.length).toBe(2);
+      expect(res.payload?.scanData?.sections.length).toBe(1);
+    });
+
+    it('rejects fullscan when scanData is missing', () => {
+      const msg = {
+        schemaVersion: 1,
+        type: 'STUDYBRIDGE_IMPORT',
+        payload: {
+          id: 'fullscan-missing-scandata',
+          mode: 'fullscan',
+          text: 'Scan without data',
+          source: { platform: 'Testbook', url: '', title: '' }
+        }
+      };
+
+      const res = validateStudyBridgePayload(msg);
+      expect(res.isValid).toBe(false);
+      expect(res.error).toContain('missing scanData');
+    });
+
+    it('rejects fullscan when totalQuestions is missing or invalid', () => {
+      const msg = {
+        schemaVersion: 1,
+        type: 'STUDYBRIDGE_IMPORT',
+        payload: {
+          id: 'fullscan-invalid-total',
+          mode: 'fullscan',
+          text: 'Scan invalid total',
+          source: { platform: 'Testbook', url: '', title: '' },
+          scanData: {
+            totalQuestions: -1,
+            sections: [],
+            questions: []
+          }
+        }
+      };
+
+      const res = validateStudyBridgePayload(msg);
+      expect(res.isValid).toBe(false);
+      expect(res.error).toContain('totalQuestions');
+    });
+
+    it('rejects fullscan when sections is not an array', () => {
+      const msg = {
+        schemaVersion: 1,
+        type: 'STUDYBRIDGE_IMPORT',
+        payload: {
+          id: 'fullscan-bad-sections',
+          mode: 'fullscan',
+          text: 'Scan bad sections',
+          source: { platform: 'Testbook', url: '', title: '' },
+          scanData: {
+            totalQuestions: 10,
+            sections: 'not-an-array' as any,
+            questions: []
+          }
+        }
+      };
+
+      const res = validateStudyBridgePayload(msg);
+      expect(res.isValid).toBe(false);
+      expect(res.error).toContain('sections array');
+    });
+
+    it('rejects fullscan when questions is not an array', () => {
+      const msg = {
+        schemaVersion: 1,
+        type: 'STUDYBRIDGE_IMPORT',
+        payload: {
+          id: 'fullscan-bad-questions',
+          mode: 'fullscan',
+          text: 'Scan bad questions',
+          source: { platform: 'Testbook', url: '', title: '' },
+          scanData: {
+            totalQuestions: 10,
+            sections: [],
+            questions: null as any
+          }
+        }
+      };
+
+      const res = validateStudyBridgePayload(msg);
+      expect(res.isValid).toBe(false);
+      expect(res.error).toContain('questions array');
+    });
+
+    it('falls back to mockName if text is omitted in fullscan mode', () => {
+      const msg = {
+        schemaVersion: 1,
+        type: 'STUDYBRIDGE_IMPORT',
+        payload: {
+          id: 'fullscan-fallback-text',
+          mode: 'fullscan',
+          text: '',
+          source: { platform: 'Testbook', url: '', title: '' },
+          scanData: {
+            mockName: 'IBPS PO Prelims Mock 02',
+            totalQuestions: 100,
+            sections: [],
+            questions: []
+          }
+        }
+      };
+
+      const res = validateStudyBridgePayload(msg);
+      expect(res.isValid).toBe(true);
+      expect(res.payload?.text).toBe('IBPS PO Prelims Mock 02');
+    });
+  });
 });

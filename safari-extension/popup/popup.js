@@ -1,7 +1,6 @@
 /**
- * StudyBridge Popup Logic V2
- * Controls Mode A (Result Summary), Mode B (Current Question), and Mode C (Selection).
- * Inspects active tab, displays Dusk manga indicators, and triggers transfers.
+ * StudyBridge Popup Logic V4
+ * Controls One-Click Full Mock Scanner, Result Summary, Current Question, and Selection.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -13,6 +12,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const reviewContextEl = document.getElementById('review-context');
   const selectionCountEl = document.getElementById('selection-count');
 
+  // Full Mock Scanner Elements
+  const scanEntireMockBtn = document.getElementById('scan-entire-mock-btn');
+  const fullMockHint = document.getElementById('full-mock-hint');
+  const scanProgressCard = document.getElementById('scan-progress-card');
+  const scanSectionBadge = document.getElementById('scan-section-badge');
+  const scanQuestionCounter = document.getElementById('scan-question-counter');
+  const scanPercentText = document.getElementById('scan-percent-text');
+  const scanProgressFill = document.getElementById('scan-progress-fill');
+  const scanPauseResumeBtn = document.getElementById('scan-pause-resume-btn');
+  const pauseResumeIcon = document.getElementById('pause-resume-icon');
+  const pauseResumeLabel = document.getElementById('pause-resume-label');
+  const scanCancelBtn = document.getElementById('scan-cancel-btn');
+
+  // Standard Action Buttons
   const summaryBtn = document.getElementById('import-summary-btn');
   const summaryHint = document.getElementById('summary-hint');
   const questionBtn = document.getElementById('import-question-btn');
@@ -27,6 +40,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const saveSettingsBtn = document.getElementById('save-settings-btn');
 
   let currentTabState = null;
+  let isScanning = false;
+  let isPaused = false;
 
   function showAlert(msg, isSuccess = true) {
     statusAlert.textContent = msg;
@@ -43,7 +58,33 @@ document.addEventListener('DOMContentLoaded', () => {
     textEl.textContent = label;
   }
 
-  // Load status from background worker
+  function updateScanUi(current, total, section, percent, status) {
+    scanProgressCard.classList.remove('hidden');
+    scanQuestionCounter.textContent = `Q ${current || 0} / ${total || 130}`;
+    scanPercentText.textContent = `${percent || 0}%`;
+    scanProgressFill.style.width = `${Math.min(100, Math.max(0, percent || 0))}%`;
+    scanSectionBadge.textContent = section || 'General';
+
+    if (status === 'paused') {
+      isPaused = true;
+      pauseResumeIcon.textContent = '▶';
+      pauseResumeLabel.textContent = 'Resume';
+      scanPauseResumeBtn.className = 'manga-btn ctrl-btn ctrl-resume';
+    } else {
+      isPaused = false;
+      pauseResumeIcon.textContent = '⏸';
+      pauseResumeLabel.textContent = 'Pause';
+      scanPauseResumeBtn.className = 'manga-btn ctrl-btn ctrl-pause';
+    }
+  }
+
+  function hideScanUi() {
+    scanProgressCard.classList.add('hidden');
+    scanEntireMockBtn.disabled = !currentTabState?.isTestbook;
+    isScanning = false;
+    isPaused = false;
+  }
+
   function refreshStatus() {
     chrome.runtime.sendMessage({ type: 'GET_STATUS' }, (res) => {
       if (chrome.runtime.lastError || !res || !res.success) {
@@ -72,6 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!res.isTestbook) {
         setBadge(sourceBadge, sourceText, 'danger', 'Unsupported site');
         reviewContextEl.textContent = 'Not Testbook';
+        scanEntireMockBtn.disabled = true;
         summaryBtn.disabled = true;
         questionBtn.disabled = true;
         selectionBtn.disabled = true;
@@ -93,19 +135,14 @@ document.addEventListener('DOMContentLoaded', () => {
         setBadge(sourceBadge, sourceText, 'neutral', 'Testbook ready');
       }
 
-      // Mode A: Summary Button
-      if (res.isSummaryVisible) {
-        summaryBtn.disabled = false;
-        summaryHint.textContent = 'Visible summary table detected';
-      } else if (res.isSummaryModalClosed) {
-        summaryBtn.disabled = false;
-        summaryHint.textContent = 'Modal closed — click to view requirement';
-      } else {
-        summaryBtn.disabled = false;
-        summaryHint.textContent = 'Click to read visible summary table';
-      }
+      // Full Mock Scanner Button
+      scanEntireMockBtn.disabled = false;
+      fullMockHint.textContent = 'Ready to scan full 130+ question paper';
 
-      // Mode B: Question Button
+      // Summary Button
+      summaryBtn.disabled = false;
+
+      // Question Button
       if (res.isQuestionVisible) {
         questionBtn.disabled = false;
         questionHint.textContent = `Q${res.questionNumber || 1} (${res.section || 'General'}) ready`;
@@ -114,7 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
         questionHint.textContent = 'No question review visible';
       }
 
-      // Mode C: Selection Button
+      // Selection Button
       if (chars > 0) {
         selectionBtn.disabled = false;
         selectionHint.textContent = `${chars} chars highlighted`;
@@ -126,8 +163,79 @@ document.addEventListener('DOMContentLoaded', () => {
       if (res.appUrl) {
         appUrlInput.value = res.appUrl;
       }
+
+      // Check if scan is already active in background
+      if (res.scanStatus && (res.scanStatus.status === 'running' || res.scanStatus.status === 'paused')) {
+        isScanning = true;
+        scanEntireMockBtn.disabled = true;
+        const s = res.scanStatus;
+        updateScanUi(s.current, s.total, s.section, s.percent, s.status);
+      }
     });
   }
+
+  // Handle Full Mock Scan Click
+  scanEntireMockBtn.addEventListener('click', () => {
+    hideAlert();
+    isScanning = true;
+    scanEntireMockBtn.disabled = true;
+    updateScanUi(0, 130, 'Starting scan...', 0, 'running');
+
+    chrome.runtime.sendMessage({ type: 'SCAN_FULL_MOCK' }, (res) => {
+      if (chrome.runtime.lastError || !res || !res.success) {
+        hideScanUi();
+        showAlert(res?.error || chrome.runtime.lastError?.message || 'Failed to start full mock scan.', false);
+      }
+    });
+  });
+
+  // Handle Pause / Resume Click
+  scanPauseResumeBtn.addEventListener('click', () => {
+    if (isPaused) {
+      chrome.runtime.sendMessage({ type: 'SCAN_RESUME' }, () => {
+        isPaused = false;
+        pauseResumeIcon.textContent = '⏸';
+        pauseResumeLabel.textContent = 'Pause';
+        scanPauseResumeBtn.className = 'manga-btn ctrl-btn ctrl-pause';
+      });
+    } else {
+      chrome.runtime.sendMessage({ type: 'SCAN_PAUSE' }, () => {
+        isPaused = true;
+        pauseResumeIcon.textContent = '▶';
+        pauseResumeLabel.textContent = 'Resume';
+        scanPauseResumeBtn.className = 'manga-btn ctrl-btn ctrl-resume';
+      });
+    }
+  });
+
+  // Handle Cancel Click
+  scanCancelBtn.addEventListener('click', () => {
+    chrome.runtime.sendMessage({ type: 'SCAN_CANCEL' }, () => {
+      hideScanUi();
+      showAlert('Full Mock Scan was cancelled.', false);
+    });
+  });
+
+  // Listen for real-time progress broadcast messages from background
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (!msg || typeof msg !== 'object') return;
+
+    if (msg.type === 'SCAN_PROGRESS') {
+      updateScanUi(msg.current, msg.total, msg.section, msg.percent, msg.status);
+    } else if (msg.type === 'SCAN_COMPLETED') {
+      hideScanUi();
+      showAlert('✓ Full Mock Scan complete! Delivered to Study App.');
+      refreshStatus();
+    } else if (msg.type === 'SCAN_CANCELLED') {
+      hideScanUi();
+      showAlert('Scan cancelled.', false);
+      refreshStatus();
+    } else if (msg.type === 'SCAN_ERROR') {
+      hideScanUi();
+      showAlert(msg.error || 'Scanner encountered an error.', false);
+      refreshStatus();
+    }
+  });
 
   // Trigger Capture for specified mode
   function triggerCapture(mode, buttonEl, originalHtml) {
@@ -156,35 +264,25 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Mode A Click: Summary
   summaryBtn.addEventListener('click', () => {
-    if (currentTabState?.isSummaryModalClosed) {
-      showAlert('Summary modal is closed. Please open the Summary modal on Testbook first.', false);
-      return;
-    }
     triggerCapture('summary', summaryBtn, summaryBtn.innerHTML);
   });
 
-  // Mode B Click: Question
   questionBtn.addEventListener('click', () => {
     triggerCapture('question', questionBtn, questionBtn.innerHTML);
   });
 
-  // Mode C Click: Selection
   selectionBtn.addEventListener('click', () => {
     triggerCapture('selection', selectionBtn, selectionBtn.innerHTML);
   });
 
-  // Toggle Settings Panel
   toggleSettingsBtn.addEventListener('click', () => {
     settingsBox.classList.toggle('hidden');
   });
 
-  // Save Settings
   saveSettingsBtn.addEventListener('click', () => {
     const url = appUrlInput.value.trim();
     if (!url) return;
-
     chrome.runtime.sendMessage({ type: 'SET_CONFIG', appUrl: url }, (res) => {
       if (res && res.success) {
         showAlert('Study App URL updated successfully!');
@@ -195,6 +293,5 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Initial inspection
   refreshStatus();
 });

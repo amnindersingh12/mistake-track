@@ -1,71 +1,92 @@
-# StudyBridge V2 — Safari Web Extension for Testbook Import
+# StudyBridge V4 — Safari Web Extension for Testbook Import
 
 StudyBridge connects your local exam preparation study application with Testbook mock test analysis and question review pages in Apple Safari.
 
-Version 2 introduces three explicit user-controlled import modes with strict DOM visibility checks, structured scorecard extraction, and question mistake classification without automatic scraping or background crawling.
+Version 4 introduces the **One-Click Full Mock Scanner** powered by a dedicated local **Scrapling Python Service** (`scrapling-service/`) for high-fidelity extraction of complete 130+ question papers and rendered solutions.
 
 ---
 
-## 1. Architecture & The Three Import Modes
+## 1. Architecture & The Four Import Modes
 
 ```
-Testbook Tab (Active Analysis / Question Review / Highlighted Selection)
-    ↓ Explicit User Action in StudyBridge Safari Extension Popup
-Safari Extension Background (Validates origin & selection size, 120s TTL queue)
-    ↓ WebExtension Tab Messaging
-Study App Content Script Bridge (Relays payload to localhost / 127.0.0.1)
-    ↓ window.postMessage
-Study App Data Intake Hub (Validates schema, populates Review Preview)
+Testbook Tab (Completed Mock Analysis / Review)
+    ↓ One-Click Action in StudyBridge Extension ("Scan Entire Mock")
+Full Mock Scanner Content Script (Traverses Question Paper / Palette & Solutions)
+    ↓ HTML Snapshots
+Local Scrapling Service (http://127.0.0.1:8787 via Scrapling Adaptor & CSS Selectors)
+    ↓ Structured JSON
+Safari Extension Background (Assembles unified FullMockScanResult payload)
+    ↓ Content Script Bridge
+Study App Data Intake Hub (Opens Full Mock Scan Preview)
     ↓
-Editable Preview (Scorecard Breakdown / Question Mistake Card with 7 Classifications)
+Question Library Browser & Bulk Mistake Tagger (with 7 Mistake Classifications)
     ↓
-Manual User Confirmation Mandatory (Saves to IndexedDB via Dexie)
+Manual User Confirmation Mandatory (Single ACID Transaction in Dexie IndexedDB)
 ```
 
-### The Three Explicit Import Modes:
+### The Four Import Modes:
 
-1. **Mode A: Import Result Summary** (`📊 Import Result Summary`)
+1. **Mode D: Scan Entire Mock** (`⚡ Scan Entire Mock` - **NEW in V4**)
+   - Single-click automated extraction of an entire completed mock test.
+   - Captures overall score, max marks, section metrics, and all 130+ questions.
+   - Activates Testbook's Question Paper view or traverses the question review palette to trigger and capture rendered solutions.
+   - Provides live progress UI in popup: Question counter (`Q 42 / 130`), Section badge, visual progress bar, Pause/Resume, and Cancel buttons.
+   - State-preserving: records user's active question and scroll position before scanning and restores them upon completion or cancellation.
+
+2. **Mode A: Import Result Summary** (`📊 Import Result Summary`)
    - Reads visible Testbook summary tables using semantic attributes (`data-prompt="Section|No. of questions|Correct|Incorrect|Skipped|Marks"`).
    - Extracts overall marks, section names, question count, correct, incorrect, skipped, marks, and derived total questions & accuracy.
-   - Strictly refuses closed modals (`aria-hidden="true"` / `display:none`) and asks the user to open the Summary modal first.
 
-2. **Mode B: Import Current Question** (`❓ Import Current Question`)
+3. **Mode B: Import Current Question** (`❓ Import Current Question`)
    - Captures the question currently displayed in the Testbook review interface.
    - Extracts question number, section, question text, options, selected answer, correct answer, marks, and visible explanation.
-   - Never guesses answers or reads hidden solution panels (`ng-hide`).
-   - In the study app preview, provides 1-click **"Save as Mistake"** with the 7 required classifications:
-     - Conceptual gap
-     - Calculation error
-     - Misreading
-     - Silly mistake
-     - Time pressure
-     - Guessing
-     - Forgot formula or fact
-     plus revision notes.
 
-3. **Mode C: Import Selected Text** (`📝 Send Selected Text`)
+4. **Mode C: Import Selected Text** (`📝 Send Selected Text`)
    - Fallback mode: captures only explicitly highlighted user text.
    - Supported via popup button and right-click context menu.
 
-### Visibility & Privacy Principles:
+### Visibility, Safety & Privacy Principles:
 - **No full page scraping:** Inspects only visible DOM elements (`isElementVisible`). Checks computed display, visibility, opacity, dimensions, `aria-hidden`, and Angular `ng-hide`.
-- **No background crawling:** Never navigates between questions automatically.
 - **No credentials or cookies:** Does not inspect network calls, cookies, local storage, or auth tokens.
 - **Zero cloud telemetry:** Runs 100% locally on your machine.
 - **Never auto-saves:** Every import requires explicit user review and confirmation before writing to Dexie database.
+- **Safe state restoration:** Preserves and restores the user's active Testbook question and scroll position. Never submits or modifies test answers.
 
 ---
 
-## 2. Prerequisites
+## 2. Local Scrapling Python Service
+
+StudyBridge V4 uses the official [Scrapling](https://github.com/D4Vinci/Scrapling) library for deterministic DOM parsing:
+
+```bash
+# Start the Scrapling parsing service on port 8787:
+./scripts/start_scrapling_service.sh
+```
+
+Service endpoints:
+- `GET http://127.0.0.1:8787/health`: Service status and Scrapling version
+- `POST http://127.0.0.1:8787/parse/summary`: Parses Testbook result summary table
+- `POST http://127.0.0.1:8787/parse/question-paper`: Parses `#questionPaper` bulk view (all 130 questions & options)
+- `POST http://127.0.0.1:8787/parse/solution`: Parses single question review and explanation
+
+Run Scrapling unit & regression tests:
+```bash
+cd scrapling-service && ./venv/bin/pytest tests/test_parsers.py -v
+```
+
+---
+
+## 3. Prerequisites
 
 - macOS 13.0 or later
 - Safari 16+ or Safari 27+ (Manifest V3 support)
 - Xcode Command Line Tools (`clang`, `swiftc`, `codesign`) or full Xcode IDE
 - Node.js 18+ for running the study application
+- Python 3.9+ for the Scrapling service
 
 ---
 
-## 3. Build & Packaging Instructions
+## 4. Build & Packaging Instructions
 
 ### Option A: Automated Build Script (Command Line)
 To build and ad-hoc sign the native macOS container app and extension plug-in:
@@ -82,12 +103,12 @@ This compiles:
 If you have Xcode installed:
 1. Open `safari-extension/xcode/StudyBridge.xcodeproj` in Xcode.
 2. Select the `StudyBridge` scheme (My Mac).
-3. In Signing & Capabilities, select your Development Team (or use Personal Team / Sign to Run Locally).
-4. Press **Cmd+B** to build or **Cmd+R** to run the container application.
+3. In Signing & Capabilities, select your Development Team.
+4. Press **Cmd+B** to build or **Cmd+R** to run.
 
 ---
 
-## 4. Enabling StudyBridge in Safari
+## 5. Enabling StudyBridge in Safari
 
 1. Launch **Safari**.
 2. Open **Safari Settings** (`Cmd+,`) → **Advanced** tab:
@@ -98,6 +119,39 @@ If you have Xcode installed:
    open safari-extension/build/StudyBridge.app
    ```
 5. In **Safari Settings** → **Extensions** tab:
+   - Find **StudyBridge Extension**.
+   - Check the box to enable it.
+   - Set permissions: Allow on `testbook.com` and `127.0.0.1` / `localhost`.
+6. You will see the **StudyBridge icon** appear in the Safari toolbar!
+
+---
+
+## 6. Primary Workflow (One-Click Full Mock)
+
+1. Start the Scrapling service: `./scripts/start_scrapling_service.sh`
+2. Start the Study Application: `npm run dev` (opens `http://127.0.0.1:5173/`)
+3. Open your completed Testbook mock test analysis in Safari.
+4. Click the **StudyBridge** toolbar icon.
+5. Click **⚡ Scan Entire Mock**.
+6. The extension scans all questions and solutions with live progress.
+7. Upon scan completion, the Study Application automatically opens the **Full Mock Scan Preview**.
+8. Review the summary metrics, browse the question library, toggle mistakes, and select mistake reasons from the 7 classification chips.
+9. Click **Confirm & Save Mock** to commit to your database!
+
+---
+
+## 7. Automated Tests
+
+```bash
+# Study App Vitest suite (70 tests)
+npm test
+
+# Scrapling Python Service regression tests (7 tests on sampletestbook.html)
+cd scrapling-service && ./venv/bin/pytest tests/test_parsers.py -v
+
+# Puppeteer End-to-End verification (All 4 Modes + Dexie IndexedDB + Screenshots)
+node scripts/test_studybridge_e2e.cjs
+```
    - Find **StudyBridge Extension**.
    - Check the box to enable it.
    - Set permissions: Allow on `testbook.com` and `127.0.0.1` / `localhost`.

@@ -14,6 +14,17 @@ const pendingTransfers = new Map();
 // Deduplication ledger of successfully delivered transfer IDs (id -> timestamp)
 const deliveredIds = new Map();
 
+// Active scanner state ledger
+let activeScanState = {
+  status: 'idle', // 'idle' | 'running' | 'paused' | 'completed' | 'cancelled'
+  tabId: null,
+  current: 0,
+  total: 0,
+  section: '',
+  percent: 0,
+  startedAt: null
+};
+
 /**
  * Periodically purge expired transfers and aged deduplication entries.
  */
@@ -248,10 +259,10 @@ async function requestFromTab(tabId, messageType) {
     // Content script might not be injected yet
   }
 
-  // Fallback: inject content/testbook-adapter.js on-demand
+  // Fallback: inject content/testbook-adapter.js and content/full-mock-scanner.js on-demand
   await chrome.scripting.executeScript({
     target: { tabId },
-    files: ['content/testbook-adapter.js']
+    files: ['content/testbook-adapter.js', 'content/full-mock-scanner.js']
   });
 
   return await chrome.tabs.sendMessage(tabId, { type: messageType });
@@ -346,7 +357,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           tabUrl,
           isAppConnected: Boolean(appTab),
           appUrl,
-          pendingCount: pendingTransfers.size
+          pendingCount: pendingTransfers.size,
+          scanStatus: activeScanState
         });
       } catch (err) {
         sendResponse({ success: false, error: err.message });
@@ -431,7 +443,135 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // 5. Settings: Update App URL
+  // 5. Full Mock Scanner Commands
+  if (message.type === 'SCAN_FULL_MOCK') {
+    (async () => {
+      try {
+        const tab = await getActiveTab();
+        if (!tab || !tab.id) throw new Error('No active tab detected.');
+        if (!isAllowedSourceUrl(tab.url)) {
+          throw new Error('Active page is not a Testbook analysis page.');
+        }
+
+        activeScanState = {
+          status: 'running',
+          tabId: tab.id,
+          current: 0,
+          total: 130,
+          section: 'Initializing...',
+          percent: 0,
+          startedAt: Date.now()
+        };
+
+        const res = await requestFromTab(tab.id, 'START_FULL_SCAN');
+        sendResponse({ success: true, ...res });
+      } catch (err) {
+        activeScanState.status = 'idle';
+        sendResponse({ success: false, error: err.message });
+      }
+    })();
+    return true;
+  }
+
+  if (message.type === 'SCAN_PAUSE') {
+    (async () => {
+      try {
+        if (activeScanState.tabId) {
+          activeScanState.status = 'paused';
+          await chrome.tabs.sendMessage(activeScanState.tabId, { type: 'SCAN_PAUSE' });
+        }
+        sendResponse({ success: true, status: 'paused' });
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+    })();
+    return true;
+  }
+
+  if (message.type === 'SCAN_RESUME') {
+    (async () => {
+      try {
+        if (activeScanState.tabId) {
+          activeScanState.status = 'running';
+          await chrome.tabs.sendMessage(activeScanState.tabId, { type: 'SCAN_RESUME' });
+        }
+        sendResponse({ success: true, status: 'running' });
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+    })();
+    return true;
+  }
+
+  if (message.type === 'SCAN_CANCEL') {
+    (async () => {
+      try {
+        if (activeScanState.tabId) {
+          activeScanState.status = 'cancelled';
+          await chrome.tabs.sendMessage(activeScanState.tabId, { type: 'SCAN_CANCEL' });
+        }
+        activeScanState.status = 'idle';
+        sendResponse({ success: true, status: 'cancelled' });
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+    })();
+    return true;
+  }
+
+  // 6. Broadcast progress and completion events from content script to popup and app
+  if (message.type === 'SCAN_PROGRESS') {
+    activeScanState.current = message.current || activeScanState.current;
+    activeScanState.total = message.total || activeScanState.total;
+    activeScanState.section = message.section || activeScanState.section;
+    activeScanState.percent = message.percent || activeScanState.percent;
+    activeScanState.status = message.status || activeScanState.status;
+
+    // Relay to popup if open
+    chrome.runtime.sendMessage(message).catch(() => {});
+    sendResponse({ ack: true });
+    return false;
+  }
+
+  if (message.type === 'SCAN_COMPLETED') {
+    activeScanState.status = 'completed';
+    (async () => {
+      try {
+        const scanResult = message.result;
+        const tab = await getActiveTab();
+
+        const payload = {
+          id: `sb-mock-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          mode: 'fullscan',
+          text: `StudyBridge Full Mock Scan: ${scanResult?.mockName || 'Testbook Mock Test'}\nQuestions: ${scanResult?.totalQuestions || 0}\nScore: ${scanResult?.overallScore || 0}`,
+          source: {
+            platform: 'Testbook',
+            url: tab?.url || '',
+            title: tab?.title || scanResult?.mockName || 'Testbook Full Mock'
+          },
+          capturedAt: new Date().toISOString(),
+          scanData: scanResult
+        };
+
+        await deliverPayload(payload);
+        activeScanState.status = 'idle';
+        chrome.runtime.sendMessage({ type: 'SCAN_COMPLETED', result: scanResult }).catch(() => {});
+      } catch (err) {
+        console.error('StudyBridge: delivery of scan completed payload failed:', err);
+      }
+    })();
+    sendResponse({ ack: true });
+    return false;
+  }
+
+  if (message.type === 'SCAN_CANCELLED' || message.type === 'SCAN_ERROR') {
+    activeScanState.status = 'idle';
+    chrome.runtime.sendMessage(message).catch(() => {});
+    sendResponse({ ack: true });
+    return false;
+  }
+
+  // 7. Settings: Update App URL
   if (message.type === 'SET_CONFIG') {
     (async () => {
       try {
