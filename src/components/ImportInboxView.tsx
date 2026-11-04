@@ -1,0 +1,735 @@
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import {
+  MockTest,
+  MistakeEntry,
+  FullMockScanResult,
+  ScannedQuestion,
+  StudyBridgeImportPayload,
+  ResultType
+} from '../types';
+import { db } from '../db/db';
+import { getTodayDateStr, addDaysToDate } from '../utils/srs';
+import { parseTimeString, getScannedQuestionStatus } from '../utils/dataIntake';
+import {
+  Inbox,
+  AlertTriangle,
+  CheckCircle2,
+  Zap,
+  ArrowRight,
+  Filter,
+  Search,
+  Upload,
+  FileJson,
+  X,
+  Keyboard,
+  Check,
+  RotateCcw,
+  BookOpen
+} from 'lucide-react';
+
+export interface ImportInboxViewProps {
+  initialPayload?: StudyBridgeImportPayload | null;
+  onNavigateToMistakes?: () => void;
+  onNavigateToMocks?: () => void;
+}
+
+const ERROR_TYPE_SHORTCUTS: Array<{ key: string; label: string }> = [
+  { key: '1', label: 'Concept gap' },
+  { key: '2', label: 'Calculation mistake' },
+  { key: '3', label: 'Silly/careless' },
+  { key: '4', label: 'Formula forgotten' },
+  { key: '5', label: 'Misread question' },
+  { key: '6', label: 'Time pressure rush' },
+  { key: '7', label: 'Did not know the shortcut' },
+  { key: '8', label: 'Guessed (no basis)' },
+  { key: '9', label: 'Overthinking' }
+];
+
+export const ImportInboxView: React.FC<ImportInboxViewProps> = ({
+  initialPayload,
+  onNavigateToMistakes,
+  onNavigateToMocks
+}) => {
+  // Staged Mock & Questions state
+  const [mockName, setMockName] = useState<string>('Testbook Full Mock Test');
+  const [mockDate, setMockDate] = useState<string>(getTodayDateStr());
+  const [scanResult, setScanResult] = useState<FullMockScanResult | null>(null);
+  const [duplicateMock, setDuplicateMock] = useState<MockTest | null>(null);
+
+  // Inbox Question Queue (wrong & unattempted)
+  const [inboxQuestions, setInboxQuestions] = useState<ScannedQuestion[]>([]);
+  const [savedCount, setSavedCount] = useState<number>(0);
+  const [skippedCount, setSkippedCount] = useState<number>(0);
+
+  // Fast Triage Mode
+  const [isFastTriageOpen, setIsFastTriageOpen] = useState<boolean>(false);
+  const [triageIndex, setTriageIndex] = useState<number>(0);
+  const [selectedErrors, setSelectedErrors] = useState<string[]>(['Concept gap']);
+  const [ruleToRemember, setRuleToRemember] = useState<string>('');
+
+  // Filtering & Search
+  const [filterStatus, setFilterStatus] = useState<'all' | 'wrong' | 'unattempted'>('all');
+  const [filterSection, setFilterSection] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'warning' } | null>(null);
+
+  const showNotification = (msg: string, type: 'success' | 'warning' = 'success') => {
+    setNotification({ msg, type });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  // Populate from initialPayload if provided
+  useEffect(() => {
+    if (initialPayload?.scanData) {
+      loadScanData(initialPayload.scanData, initialPayload.capturedAt);
+    }
+  }, [initialPayload]);
+
+  const loadScanData = (sd: FullMockScanResult, capturedAt?: string) => {
+    setScanResult(sd);
+    const title = sd.mockName || sd.examName || 'Testbook Mock Test';
+    setMockName(title);
+    const dateStr = capturedAt ? capturedAt.split('T')[0] : getTodayDateStr();
+    setMockDate(dateStr);
+
+    // Extract mistakes: questions that are Wrong or Skipped
+    const candidates = (sd.questions || []).filter((q) => {
+      const status = getScannedQuestionStatus(q);
+      return status === 'Wrong' || status === 'Skipped';
+    });
+    setInboxQuestions(candidates);
+    setTriageIndex(0);
+    setSavedCount(0);
+    setSkippedCount(0);
+  };
+
+  // Check for duplicate mock in Dexie
+  useEffect(() => {
+    async function checkDuplicate() {
+      if (!mockName.trim()) {
+        setDuplicateMock(null);
+        return;
+      }
+      try {
+        const matches = await db.mocks.where('name').equalsIgnoreCase(mockName.trim()).toArray();
+        const dup = matches.find((m) => m.date === mockDate);
+        setDuplicateMock(dup || null);
+      } catch {
+        setDuplicateMock(null);
+      }
+    }
+    checkDuplicate();
+  }, [mockName, mockDate]);
+
+  // Handle JSON file upload
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const parsed = JSON.parse(text);
+        if (parsed.payload?.scanData) {
+          loadScanData(parsed.payload.scanData, parsed.payload.capturedAt);
+          showNotification('StudyBridge export loaded into inbox!');
+        } else if (parsed.questions && parsed.totalQuestions) {
+          loadScanData(parsed);
+          showNotification('Mock questions loaded into inbox!');
+        } else {
+          showNotification('Unrecognized JSON format. Please use StudyBridge export.', 'warning');
+        }
+      } catch {
+        showNotification('Invalid JSON file.', 'warning');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  // Load sample fixture from sampletestbook.html data
+  const handleLoadSampleFixture = () => {
+    const sampleScan: FullMockScanResult = {
+      mockName: 'TNPSC Group 1 Prelims Mock 01',
+      examName: 'TNPSC Group 1',
+      overallScore: 85.93,
+      totalQuestions: 130,
+      sections: [
+        { sectionName: 'Paper 1', questionCount: 80, correctCount: 27, incorrectCount: 9, skippedCount: 44, marks: 30.93 },
+        { sectionName: 'Paper 2', questionCount: 50, correctCount: 30, incorrectCount: 10, skippedCount: 10, marks: 55.0 }
+      ],
+      questions: [
+        {
+          questionNumber: 1,
+          section: 'Paper 1',
+          topic: 'Current Affairs',
+          questionText: 'Tamil Nadu (TN) recently received six additional Geographical Indication (GI) tags. Which of the following combinations represents these newly tagged products correctly?',
+          options: [
+            { index: 0, text: 'Rameswaram Fish, Erode Turmeric, Madurai Malli' },
+            { index: 1, text: 'Salem Silk, Kanchipuram Saree, Nilgiri Tea' },
+            { index: 2, text: 'Tirunelveli Halwa, Chettinad Kottan, Thanjavur Doll' },
+            { index: 3, text: 'Puliyankudi Acid Lime, Panruti Cashew, and Virudhunagar Samba Vathal', isCorrect: true },
+            { index: 4, text: 'None of the above' }
+          ],
+          selectedAnswer: 'Left unattempted',
+          correctAnswer: 'Puliyankudi Acid Lime, Panruti Cashew, and Virudhunagar Samba Vathal',
+          statusBadge: 'Skipped',
+          timeTaken: '00:15',
+          avgTime: '00:45',
+          explanation: 'The correct answer is Puliyankudi Acid Lime, Panruti Cashew, and Virudhunagar Samba Vathal. Key Points: TN now has over 58 GI tags leading all states in India.',
+          solutionStatus: 'captured'
+        },
+        {
+          questionNumber: 2,
+          section: 'Paper 1',
+          topic: 'Indian Polity',
+          questionText: 'Consider the following statements regarding the powers of the State Governor under Article 200 of the Constitution. Which statement is incorrect?',
+          options: [
+            { index: 0, text: 'The Governor can give assent to the bill.' },
+            { index: 1, text: 'The Governor can withhold assent to the bill.' },
+            { index: 2, text: 'The Governor can reserve the bill for consideration of the President.' },
+            { index: 3, text: 'The Governor must return a Money Bill for reconsideration.', isCorrect: true, isSelected: true }
+          ],
+          selectedAnswer: 'The Governor must return a Money Bill for reconsideration.',
+          correctAnswer: 'The Governor can give assent or withhold, but CANNOT return a Money Bill.',
+          statusBadge: 'Wrong',
+          timeTaken: '01:20',
+          avgTime: '00:50',
+          explanation: 'Under Article 200, the Governor cannot return a Money Bill to the Legislature for reconsideration.',
+          solutionStatus: 'captured'
+        }
+      ]
+    };
+    loadScanData(sampleScan);
+    showNotification('Loaded 2 sample mistake questions from fixture!');
+  };
+
+  // Filtered inbox questions
+  const filteredInbox = useMemo(() => {
+    return inboxQuestions.filter((q) => {
+      const status = getScannedQuestionStatus(q);
+      if (filterStatus === 'wrong' && status !== 'Wrong') return false;
+      if (filterStatus === 'unattempted' && status !== 'Skipped') return false;
+      if (filterSection !== 'all' && q.section !== filterSection) return false;
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        return (
+          q.questionText.toLowerCase().includes(query) ||
+          (q.topic && q.topic.toLowerCase().includes(query)) ||
+          String(q.questionNumber).includes(query)
+        );
+      }
+      return true;
+    });
+  }, [inboxQuestions, filterStatus, filterSection, searchQuery]);
+
+  const uniqueSections = useMemo(() => {
+    const set = new Set<string>();
+    inboxQuestions.forEach((q) => set.add(q.section));
+    return Array.from(set);
+  }, [inboxQuestions]);
+
+  const currentTriageQuestion = filteredInbox[triageIndex];
+
+  // Fast Triage: Accept & Save into db.mistakes
+  const handleAcceptAndSave = useCallback(async () => {
+    if (!currentTriageQuestion) return;
+
+    const today = getTodayDateStr();
+    const status = getScannedQuestionStatus(currentTriageQuestion);
+    const resultType: ResultType = status === 'Wrong' ? 'Wrong' : 'Left unattempted';
+
+    const secName = currentTriageQuestion.section || 'General';
+    const secId = secName.toLowerCase().includes('reason') ? 'reasoning'
+      : secName.toLowerCase().includes('quant') || secName.toLowerCase().includes('math') ? 'quant'
+      : secName.toLowerCase().includes('eng') ? 'english' : 'general';
+
+    const newMistake: MistakeEntry = {
+      mockName,
+      sectionId: secId,
+      sectionName: secName,
+      topic: currentTriageQuestion.topic || secName,
+      questionNumber: currentTriageQuestion.questionNumber,
+      questionText: currentTriageQuestion.questionText,
+      questionImage: currentTriageQuestion.questionImage,
+      myAnswer: currentTriageQuestion.selectedAnswer || 'Left unattempted',
+      correctAnswer: currentTriageQuestion.correctAnswer || 'Refer to solution',
+      resultType,
+      errorTypes: selectedErrors.length > 0 ? selectedErrors : ['Concept gap'],
+      timeSpentSeconds: currentTriageQuestion.timeTaken ? parseTimeString(currentTriageQuestion.timeTaken).seconds : 60,
+      idealTimeSeconds: currentTriageQuestion.avgTime ? parseTimeString(currentTriageQuestion.avgTime).seconds : 45,
+      whatWentWrong: status === 'Wrong' ? 'Incorrect option selected in mock test' : 'Question left unattempted',
+      correctSolution: currentTriageQuestion.explanation || '',
+      betterApproach: '',
+      ruleToRemember: ruleToRemember.trim() || `Review key formula/rules for ${currentTriageQuestion.topic || secName}.`,
+      difficulty: 'Medium',
+      tags: ['testbook-import', 'inbox-triaged'],
+      status: 'New',
+      interval: 1,
+      consecutiveCorrect: 0,
+      nextReviewDate: addDaysToDate(today, 1),
+      history: [],
+      createdAt: new Date().toISOString()
+    };
+
+    await db.mistakes.add(newMistake);
+
+    setSavedCount((prev) => prev + 1);
+    showNotification(`Q${currentTriageQuestion.questionNumber} saved to Mistake Log!`);
+
+    // Remove from inbox queue
+    setInboxQuestions((prev) => prev.filter((q) => q.questionNumber !== currentTriageQuestion.questionNumber));
+
+    // Reset fields for next question
+    setSelectedErrors(['Concept gap']);
+    setRuleToRemember('');
+  }, [currentTriageQuestion, mockName, selectedErrors, ruleToRemember]);
+
+  // Fast Triage: Skip question
+  const handleSkipQuestion = useCallback(() => {
+    if (!currentTriageQuestion) return;
+    setSkippedCount((prev) => prev + 1);
+    if (triageIndex < filteredInbox.length - 1) {
+      setTriageIndex((prev) => prev + 1);
+    } else {
+      setTriageIndex(0);
+    }
+  }, [currentTriageQuestion, triageIndex, filteredInbox.length]);
+
+  // Fast Triage: Keyboard shortcuts (keys 1-9, Enter, Skip)
+  useEffect(() => {
+    if (!isFastTriageOpen || !currentTriageQuestion) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't capture digits when user is typing inside rule-to-remember input
+      const activeTagName = (document.activeElement?.tagName || '').toLowerCase();
+      const isInputFocused = activeTagName === 'input' || activeTagName === 'textarea';
+
+      if (!isInputFocused) {
+        // Digits 1-9 toggle error classifications
+        const shortcut = ERROR_TYPE_SHORTCUTS.find((s) => s.key === e.key);
+        if (shortcut) {
+          e.preventDefault();
+          setSelectedErrors((prev) =>
+            prev.includes(shortcut.label)
+              ? prev.filter((err) => err !== shortcut.label)
+              : [...prev, shortcut.label]
+          );
+          return;
+        }
+
+        if (e.key === 's' || e.key === 'S') {
+          e.preventDefault();
+          handleSkipQuestion();
+          return;
+        }
+      }
+
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || !isInputFocused)) {
+        e.preventDefault();
+        handleAcceptAndSave();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        setIsFastTriageOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFastTriageOpen, currentTriageQuestion, handleAcceptAndSave, handleSkipQuestion]);
+
+  return (
+    <div className="space-y-6">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white dark:bg-stone-900 p-6 rounded-2xl border border-stone-200 dark:border-stone-800 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="p-3 bg-red-100 dark:bg-red-950/60 rounded-xl text-red-600 dark:text-red-400">
+            <Inbox className="w-6 h-6" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-stone-900 dark:text-stone-100 flex items-center gap-2">
+              Import Inbox
+              {inboxQuestions.length > 0 && (
+                <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300">
+                  {inboxQuestions.length} pending
+                </span>
+              )}
+            </h1>
+            <p className="text-sm text-stone-500 dark:text-stone-400">
+              Review and triage wrong/unattempted questions from Testbook imports into your active Mistake Log.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {inboxQuestions.length > 0 && (
+            <button
+              onClick={() => setIsFastTriageOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-xl shadow-sm transition-colors"
+            >
+              <Zap className="w-4 h-4" />
+              Fast Triage Mode
+            </button>
+          )}
+
+          <label className="flex items-center gap-2 px-4 py-2 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 font-medium rounded-xl cursor-pointer transition-colors">
+            <Upload className="w-4 h-4" />
+            Upload JSON
+            <input type="file" accept=".json" onChange={handleFileUpload} className="hidden" />
+          </label>
+
+          <button
+            onClick={handleLoadSampleFixture}
+            className="flex items-center gap-2 px-3 py-2 text-xs text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 border border-stone-200 dark:border-stone-800 rounded-xl transition-colors"
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            Load Sample
+          </button>
+        </div>
+      </div>
+
+      {/* Notifications */}
+      {notification && (
+        <div className={`p-4 rounded-xl flex items-center gap-2 text-sm font-medium ${
+          notification.type === 'warning'
+            ? 'bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300'
+            : 'bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300'
+        }`}>
+          {notification.type === 'warning' ? <AlertTriangle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+          {notification.msg}
+        </div>
+      )}
+
+      {/* Duplicate Mock Warning Banner */}
+      {duplicateMock && (
+        <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-xl flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-sm text-amber-900 dark:text-amber-200">
+            <span className="font-semibold">⚠️ Duplicate Mock Detected:</span> A mock test named{' '}
+            <span className="font-mono font-medium">"{duplicateMock.name}"</span> on{' '}
+            <span className="font-medium">{duplicateMock.date}</span> already exists in your database (Mock ID #{duplicateMock.id}).
+            Questions saved will be attached to your Mistake Notebook, but avoid re-saving the scorecard to prevent duplicate logs.
+          </div>
+        </div>
+      )}
+
+      {/* Empty State */}
+      {inboxQuestions.length === 0 ? (
+        <div className="bg-white dark:bg-stone-900 rounded-2xl border border-stone-200 dark:border-stone-800 p-12 text-center">
+          <div className="w-16 h-16 bg-stone-100 dark:bg-stone-800 text-stone-400 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <CheckCircle2 className="w-8 h-8 text-emerald-500" />
+          </div>
+          <h2 className="text-xl font-bold text-stone-900 dark:text-stone-100 mb-2">Inbox Zero!</h2>
+          <p className="text-stone-500 dark:text-stone-400 max-w-md mx-auto mb-6">
+            No untriaged mistake questions remaining. Capture new tests via the Safari Extension or import an offline JSON file.
+          </p>
+          <div className="flex justify-center gap-3">
+            <button
+              onClick={handleLoadSampleFixture}
+              className="px-4 py-2 bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 font-medium rounded-xl hover:opacity-90 transition-opacity"
+            >
+              Test with Sample Fixture
+            </button>
+            {onNavigateToMistakes && (
+              <button
+                onClick={onNavigateToMistakes}
+                className="px-4 py-2 border border-stone-300 dark:border-stone-700 font-medium rounded-xl hover:bg-stone-50 dark:hover:bg-stone-800 transition-colors"
+              >
+                Go to Mistake Notebook
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* Questions Table / List View */
+        <div className="space-y-4">
+          {/* Controls Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-stone-900 p-4 rounded-xl border border-stone-200 dark:border-stone-800">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-stone-400">Filters:</span>
+              <button
+                onClick={() => setFilterStatus('all')}
+                className={`px-3 py-1 text-xs font-medium rounded-lg ${filterStatus === 'all' ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900' : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300'}`}
+              >
+                All ({inboxQuestions.length})
+              </button>
+              <button
+                onClick={() => setFilterStatus('wrong')}
+                className={`px-3 py-1 text-xs font-medium rounded-lg ${filterStatus === 'wrong' ? 'bg-red-600 text-white' : 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300'}`}
+              >
+                Wrong
+              </button>
+              <button
+                onClick={() => setFilterStatus('unattempted')}
+                className={`px-3 py-1 text-xs font-medium rounded-lg ${filterStatus === 'unattempted' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300'}`}
+              >
+                Unattempted
+              </button>
+
+              {uniqueSections.length > 1 && (
+                <select
+                  value={filterSection}
+                  onChange={(e) => setFilterSection(e.target.value)}
+                  className="px-2 py-1 text-xs font-medium bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg text-stone-700 dark:text-stone-200"
+                >
+                  <option value="all">All Sections</option>
+                  {uniqueSections.map((sec) => (
+                    <option key={sec} value={sec}>{sec}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            <div className="relative">
+              <Search className="w-4 h-4 text-stone-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Search question text or topic..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 pr-3 py-1.5 text-xs bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg w-full sm:w-64 focus:outline-none focus:ring-1 focus:ring-red-500"
+              />
+            </div>
+          </div>
+
+          {/* Cards List */}
+          <div className="grid gap-3">
+            {filteredInbox.map((q, idx) => {
+              const status = getScannedQuestionStatus(q);
+              return (
+                <div
+                  key={q.questionNumber}
+                  className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-5 hover:border-red-300 dark:hover:border-red-900 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-4 mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-bold px-2.5 py-1 bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 rounded-md">
+                        Q.{q.questionNumber}
+                      </span>
+                      <span className="text-xs font-semibold px-2.5 py-1 bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 rounded-md">
+                        {q.section}
+                      </span>
+                      {q.topic && (
+                        <span className="text-xs px-2.5 py-1 bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 rounded-md">
+                          {q.topic}
+                        </span>
+                      )}
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                        status === 'Wrong'
+                          ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
+                          : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                      }`}>
+                        {status === 'Wrong' ? '✕ Wrong Answer' : '○ Left Unattempted'}
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setTriageIndex(idx);
+                        setIsFastTriageOpen(true);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold text-red-600 hover:text-white hover:bg-red-600 border border-red-200 dark:border-red-900 rounded-lg transition-colors"
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                      Triage This
+                    </button>
+                  </div>
+
+                  <p className="text-sm text-stone-900 dark:text-stone-100 font-medium mb-3 line-clamp-2">
+                    {q.questionText}
+                  </p>
+
+                  <div className="grid sm:grid-cols-2 gap-2 text-xs bg-stone-50 dark:bg-stone-800/50 p-3 rounded-lg">
+                    <div>
+                      <span className="text-stone-500">Your Answer: </span>
+                      <span className="font-medium text-red-600 dark:text-red-400">
+                        {q.selectedAnswer || 'Left unattempted'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-stone-500">Correct Answer: </span>
+                      <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                        {q.correctAnswer || 'See solution'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* FAST TRIAGE MODAL */}
+      {isFastTriageOpen && currentTriageQuestion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-stone-200 dark:border-stone-800 flex items-center justify-between bg-stone-50 dark:bg-stone-900/80">
+              <div className="flex items-center gap-3">
+                <span className="p-2 bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400 rounded-lg">
+                  <Zap className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="font-bold text-stone-900 dark:text-stone-100 flex items-center gap-2">
+                    Fast Triage Mode
+                    <span className="text-xs font-mono px-2 py-0.5 bg-stone-200 dark:bg-stone-800 rounded text-stone-700 dark:text-stone-300">
+                      {triageIndex + 1} / {filteredInbox.length}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-stone-500">Use keys 1–9 for error type, text for rule, Enter to accept.</p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsFastTriageOpen(false)}
+                className="p-2 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-6 flex-1">
+              {/* Question Statement */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="font-mono text-xs font-bold px-2 py-0.5 bg-stone-100 dark:bg-stone-800 rounded">
+                    Q.{currentTriageQuestion.questionNumber}
+                  </span>
+                  <span className="text-xs px-2 py-0.5 bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 rounded">
+                    {currentTriageQuestion.section}
+                  </span>
+                  {currentTriageQuestion.topic && (
+                    <span className="text-xs px-2 py-0.5 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 rounded">
+                      {currentTriageQuestion.topic}
+                    </span>
+                  )}
+                </div>
+                <h4 className="text-base font-semibold text-stone-900 dark:text-stone-100 leading-relaxed">
+                  {currentTriageQuestion.questionText}
+                </h4>
+                {currentTriageQuestion.questionImage && (
+                  <img
+                    src={currentTriageQuestion.questionImage}
+                    alt="Question"
+                    className="max-h-60 mt-3 rounded-lg border border-stone-200 dark:border-stone-800"
+                  />
+                )}
+              </div>
+
+              {/* Options */}
+              {currentTriageQuestion.options && currentTriageQuestion.options.length > 0 && (
+                <div className="space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-stone-400">Options</span>
+                  <div className="grid gap-2">
+                    {currentTriageQuestion.options.map((opt, i) => {
+                      const isCorrect = opt.isCorrect || opt.text === currentTriageQuestion.correctAnswer;
+                      const isSelected = opt.isSelected || opt.text === currentTriageQuestion.selectedAnswer;
+                      return (
+                        <div
+                          key={i}
+                          className={`p-3 rounded-xl border text-sm flex items-start gap-2 ${
+                            isCorrect
+                              ? 'border-emerald-300 bg-emerald-50/60 dark:bg-emerald-950/20 text-emerald-900 dark:text-emerald-200'
+                              : isSelected
+                              ? 'border-red-300 bg-red-50/60 dark:bg-red-950/20 text-red-900 dark:text-red-200'
+                              : 'border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-stone-800 dark:text-stone-200'
+                          }`}
+                        >
+                          <span className="font-mono text-xs font-bold">{String.fromCharCode(65 + i)}.</span>
+                          <span className="flex-1">{opt.text}</span>
+                          {isCorrect && <span className="text-xs font-bold text-emerald-600">✓ Correct</span>}
+                          {isSelected && !isCorrect && <span className="text-xs font-bold text-red-600">✕ Your Answer</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Solution */}
+              {currentTriageQuestion.explanation && (
+                <div className="p-4 bg-stone-50 dark:bg-stone-800/40 rounded-xl border border-stone-200 dark:border-stone-800">
+                  <span className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-1 block">Solution / Explanation</span>
+                  <p className="text-xs text-stone-700 dark:text-stone-300 leading-relaxed whitespace-pre-wrap">
+                    {currentTriageQuestion.explanation}
+                  </p>
+                </div>
+              )}
+
+              {/* Error Classification Keyboard Hotkeys 1-9 */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-stone-500">
+                    Why did this mistake happen? (Press keys 1–9)
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {ERROR_TYPE_SHORTCUTS.map((shortcut) => {
+                    const isSelected = selectedErrors.includes(shortcut.label);
+                    return (
+                      <button
+                        key={shortcut.key}
+                        onClick={() => {
+                          setSelectedErrors((prev) =>
+                            isSelected ? prev.filter((e) => e !== shortcut.label) : [...prev, shortcut.label]
+                          );
+                        }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                          isSelected
+                            ? 'bg-red-600 text-white border-red-600 shadow-sm'
+                            : 'bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 border-stone-200 dark:border-stone-700 hover:border-red-400'
+                        }`}
+                      >
+                        <span className={`px-1 rounded text-[10px] font-mono ${isSelected ? 'bg-red-700 text-white' : 'bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300'}`}>
+                          {shortcut.key}
+                        </span>
+                        {shortcut.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Rule to Remember Input */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-stone-500 block">
+                  Rule to Remember (Key takeaway to avoid repeating this error)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Always check if Money Bill can be returned; apply A+B+AB/100..."
+                  value={ruleToRemember}
+                  onChange={(e) => setRuleToRemember(e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-white dark:bg-stone-900 border border-stone-300 dark:border-stone-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500"
+                />
+              </div>
+            </div>
+
+            {/* Modal Footer Controls */}
+            <div className="p-4 border-t border-stone-200 dark:border-stone-800 flex items-center justify-between bg-stone-50 dark:bg-stone-900">
+              <button
+                onClick={handleSkipQuestion}
+                className="px-4 py-2 text-sm text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 font-medium rounded-xl transition-colors"
+              >
+                Skip Question <span className="text-xs font-mono opacity-60">[S]</span>
+              </button>
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleAcceptAndSave}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl shadow-md transition-colors"
+                >
+                  <Check className="w-4 h-4" />
+                  Accept & Save to Mistakes
+                  <span className="text-xs font-mono opacity-80">[Enter]</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
