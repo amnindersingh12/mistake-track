@@ -19,6 +19,7 @@ interface CheatSheetViewProps {
 export const CheatSheetView: React.FC<CheatSheetViewProps> = ({ mistakes, settings }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSection, setSelectedSection] = useState<string>('all');
+  const [selectedTopic, setSelectedTopic] = useState<string>('all');
 
   const handlePrint = () => {
     window.print();
@@ -27,11 +28,21 @@ export const CheatSheetView: React.FC<CheatSheetViewProps> = ({ mistakes, settin
   // Extract unique rules (filtering out empty or duplicate rules)
   const validMistakesWithRules = mistakes.filter((m) => m.ruleToRemember && m.ruleToRemember.trim().length > 0);
 
+  const availableTopics = Array.from(
+    new Set(
+      validMistakesWithRules
+        .filter((m) => selectedSection === 'all' || m.sectionId === selectedSection)
+        .map((m) => m.topic)
+        .filter(Boolean)
+    )
+  ).sort();
+
   // Group by Section, then by Topic
   const groupedRules: Record<string, Record<string, MistakeEntry[]>> = {};
 
   for (const m of validMistakesWithRules) {
     if (selectedSection !== 'all' && m.sectionId !== selectedSection) continue;
+    if (selectedTopic !== 'all' && m.topic !== selectedTopic) continue;
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -98,13 +109,29 @@ export const CheatSheetView: React.FC<CheatSheetViewProps> = ({ mistakes, settin
 
           <select
             value={selectedSection}
-            onChange={(e) => setSelectedSection(e.target.value)}
+            onChange={(e) => {
+              setSelectedSection(e.target.value);
+              setSelectedTopic('all');
+            }}
             className="text-xs px-3 py-2 rounded-xl bg-[var(--card-bg)] border-2 border-[var(--ink-border)] text-[var(--ink-border)] font-bold shadow-manga-sm"
           >
             <option value="all">All Sections</option>
             {settings.sections.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={selectedTopic}
+            onChange={(e) => setSelectedTopic(e.target.value)}
+            className="text-xs px-3 py-2 rounded-xl bg-[var(--card-bg)] border-2 border-[var(--ink-border)] text-[var(--ink-border)] font-bold shadow-manga-sm"
+          >
+            <option value="all">All Topics</option>
+            {availableTopics.map((t) => (
+              <option key={t} value={t}>
+                {t}
               </option>
             ))}
           </select>
