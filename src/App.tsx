@@ -1,22 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { db, ensureSettings, DEFAULT_SETTINGS } from './db/db';
 import { ExamSettings, MockTest, MistakeEntry, PaperTest, StudyTask, StudyBridgeImportPayload } from './types';
 import { validateStudyBridgePayload } from './utils/dataIntake';
 import { Sidebar, NavTab } from './components/Sidebar';
-import { DashboardView } from './components/DashboardView';
-import { MocksView } from './components/MocksView';
-import { MistakesView } from './components/MistakesView';
-import { PapersView } from './components/PapersView';
-import { ReviewQueueView } from './components/ReviewQueueView';
-import { PlannerView } from './components/PlannerView';
-import { CheatSheetView } from './components/CheatSheetView';
-import { SettingsView } from './components/SettingsView';
 import { LivingSky } from './components/LivingSky';
-import { DataIntakeModal } from './components/DataIntakeModal';
-import { GlobalSearchModal } from './components/GlobalSearchModal';
-import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
 import { useTheme } from './context/ThemeContext';
 import { getTodayDateStr } from './utils/srs';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   Menu,
   Moon,
@@ -24,12 +14,30 @@ import {
   PlusCircle,
   FileInput,
   Search,
-  Target,
-  Keyboard
+  Keyboard,
+  Inbox
 } from 'lucide-react';
+import { MangaIconPlus, MangaIconSearch, MangaIconInbox } from './components/MangaIcons';
+
+// Route-level code-splitting
+const DashboardView = React.lazy(() => import('./components/DashboardView').then((m) => ({ default: m.DashboardView })));
+const MocksView = React.lazy(() => import('./components/MocksView').then((m) => ({ default: m.MocksView })));
+const MistakesView = React.lazy(() => import('./components/MistakesView').then((m) => ({ default: m.MistakesView })));
+const PapersView = React.lazy(() => import('./components/PapersView').then((m) => ({ default: m.PapersView })));
+const ImportInboxView = React.lazy(() => import('./components/ImportInboxView').then((m) => ({ default: m.ImportInboxView })));
+const ReviewQueueView = React.lazy(() => import('./components/ReviewQueueView').then((m) => ({ default: m.ReviewQueueView })));
+const PlannerView = React.lazy(() => import('./components/PlannerView').then((m) => ({ default: m.PlannerView })));
+const CheatSheetView = React.lazy(() => import('./components/CheatSheetView').then((m) => ({ default: m.CheatSheetView })));
+const SettingsView = React.lazy(() => import('./components/SettingsView').then((m) => ({ default: m.SettingsView })));
+
+// Lazy-loaded dialogs & modals
+const DataIntakeModal = React.lazy(() => import('./components/DataIntakeModal').then((m) => ({ default: m.DataIntakeModal })));
+const GlobalSearchModal = React.lazy(() => import('./components/GlobalSearchModal').then((m) => ({ default: m.GlobalSearchModal })));
+const KeyboardShortcutsModal = React.lazy(() => import('./components/KeyboardShortcutsModal').then((m) => ({ default: m.KeyboardShortcutsModal })));
 
 export function App() {
   const { theme, toggleTheme } = useTheme();
+  const shouldReduceMotion = useReducedMotion();
   const [currentTab, setCurrentTab] = useState<NavTab>('dashboard');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
@@ -71,7 +79,7 @@ export function App() {
       );
 
       setStudyBridgePayload(payload);
-      setIsDataIntakeOpen(true);
+      setCurrentTab('inbox');
     };
 
     window.addEventListener('message', handleStudyBridgeMessage);
@@ -174,16 +182,17 @@ export function App() {
         return;
       }
 
-      // 5. Number keys 1-8 for Instant Tab Switching
+      // 5. Number keys 1-9 for Instant Tab Switching
       const tabKeyMap: Record<string, NavTab> = {
         '1': 'dashboard',
         '2': 'mocks',
         '3': 'papers',
         '4': 'mistakes',
-        '5': 'review',
-        '6': 'planner',
-        '7': 'cheatsheet',
-        '8': 'settings'
+        '5': 'inbox',
+        '6': 'review',
+        '7': 'planner',
+        '8': 'cheatsheet',
+        '9': 'settings'
       };
 
       if (tabKeyMap[e.key]) {
@@ -277,35 +286,35 @@ export function App() {
       />
 
       {/* Main Content Area */}
-      <div className="lg:pl-64 flex-1 flex flex-col z-10 relative">
+      <div className="lg:pl-64 flex-1 flex flex-col z-10 relative max-w-full overflow-x-hidden">
         {/* Top Header Bar */}
-        <header className="h-16 bg-[var(--bg-panel)]/90 backdrop-blur-md border-b-2 border-[var(--border-subtle)] sticky top-0 z-30 px-4 sm:px-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <header className="h-16 bg-[var(--bg-panel)]/90 backdrop-blur-md border-b-2 border-[var(--border-subtle)] sticky top-0 z-30 px-3 sm:px-6 flex items-center justify-between">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button
               onClick={() => setIsMobileNavOpen(true)}
-              className="p-2 rounded-xl border-2 border-[var(--border-subtle)] text-[var(--text-primary)] hover:bg-[var(--bg-surface)] lg:hidden"
+              className="p-2 rounded-xl border-2 border-[var(--border-subtle)] text-[var(--text-primary)] hover:bg-[var(--bg-surface)] lg:hidden shrink-0"
               aria-label="Open mobile navigation"
             >
               <Menu className="w-5 h-5" />
             </button>
-            <div className="flex items-center gap-2">
-              <span className="font-display text-xs font-black px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-subtle)] shadow-manga-sm hidden sm:inline-block">
+            <div className="flex items-center gap-2 truncate">
+              <span className="font-display text-xs font-black px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-subtle)] shadow-manga-sm hidden sm:inline-block truncate max-w-[200px]">
                 {settings.examName}
               </span>
-              <span className="text-xs text-[var(--text-muted)] font-mono hidden md:inline-block">
+              <span className="text-xs text-[var(--text-muted)] font-mono hidden md:inline-block truncate">
                 Target: <strong className="text-[var(--text-primary)]">{settings.targetScore}</strong> • Cutoff: <strong className="text-[var(--text-primary)]">{settings.overallCutoff}</strong>
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             {/* Global Search Header Button */}
             <button
               onClick={() => setIsSearchOpen(true)}
               className="hidden sm:inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border-2 border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--action-primary)] text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all shadow-xs"
               title="Search mocks, mistakes, papers, tasks (Cmd+K)"
             >
-              <Search className="w-3.5 h-3.5 text-[var(--action-primary)]" />
+              <MangaIconSearch className="w-3.5 h-3.5 text-[var(--action-primary)]" />
               <span>Search...</span>
               <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-panel)]">
                 ⌘K
@@ -325,14 +334,28 @@ export function App() {
               </kbd>
             </button>
 
+            {/* Import Inbox Button */}
+            <button
+              onClick={() => setCurrentTab('inbox')}
+              className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border-2 text-xs font-bold shadow-manga-sm hover:-translate-y-0.5 active:translate-y-0.5 transition-all ${
+                currentTab === 'inbox'
+                  ? 'border-[var(--ink-border)] bg-[var(--peach)] text-[var(--ink)]'
+                  : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:bg-[var(--bg-panel)] text-[var(--text-primary)]'
+              }`}
+              title="Import Inbox (Press 5)"
+            >
+              <MangaIconInbox className="w-4 h-4 text-[var(--peach)]" />
+              <span className="hidden sm:inline">Inbox</span>
+            </button>
+
             {/* Real Data Intake Button */}
             <button
               onClick={() => setIsDataIntakeOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:bg-[var(--bg-panel)] text-[var(--text-primary)] text-xs font-bold shadow-manga-sm hover:-translate-y-0.5 active:translate-y-0.5 transition-all"
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border-2 border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:bg-[var(--bg-panel)] text-[var(--text-primary)] text-xs font-bold shadow-manga-sm hover:-translate-y-0.5 active:translate-y-0.5 transition-all"
               title="Import CSV, Paste Testbook text, or restore JSON (Press I)"
             >
               <FileInput className="w-4 h-4 text-[var(--action-primary)]" />
-              <span className="hidden sm:inline">Data Intake</span>
+              <span className="hidden sm:inline">Intake</span>
               <span className="sm:hidden">Import</span>
               <kbd className="hidden md:inline-block text-[10px] font-mono px-1 py-0.2 rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-panel)] text-[var(--text-muted)] font-bold">
                 I
@@ -345,11 +368,11 @@ export function App() {
                 setCurrentTab('mistakes');
                 setIsQuickAddOpen(true);
               }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border-2 border-[var(--ink-border)] bg-[var(--sakura)] text-white text-xs font-bold shadow-manga-sm hover:-translate-y-0.5 active:translate-y-0.5 transition-all"
+              className="inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-xl border-2 border-[var(--ink-border)] bg-[var(--sakura)] text-white text-xs font-bold shadow-manga-sm hover:-translate-y-0.5 active:translate-y-0.5 transition-all"
               title="Quick Log Mistake (Press N)"
             >
-              <PlusCircle className="w-4 h-4" />
-              <span>Log Mistake</span>
+              <MangaIconPlus className="w-4 h-4" />
+              <span className="hidden sm:inline">Log Mistake</span>
               <kbd className="hidden sm:inline-block text-[10px] font-mono px-1.5 py-0.2 rounded-sm bg-black/20 text-white font-bold">
                 N
               </kbd>
@@ -371,120 +394,153 @@ export function App() {
           </div>
         </header>
 
-        {/* View Switcher Container */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8">
-          {currentTab === 'dashboard' && (
-            <DashboardView
-              mocks={mocks}
-              mistakes={mistakes}
-              papers={papers}
-              tasks={tasks}
-              settings={settings}
-              onNavigateToTab={(tab) => setCurrentTab(tab)}
-              onOpenQuickAdd={() => setIsQuickAddOpen(true)}
-              onOpenDataIntake={() => setIsDataIntakeOpen(true)}
-              onToggleTask={handleToggleTask}
-            />
-          )}
+        {/* View Switcher Container with Page Transitions & Lazy Suspense */}
+        <main className="flex-1 p-3 sm:p-6 lg:p-8 max-w-full overflow-x-hidden">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentTab}
+              initial={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: -8 }}
+              transition={{ duration: 0.16, ease: 'easeOut' }}
+            >
+              <Suspense
+                fallback={
+                  <div className="flex flex-col items-center justify-center p-12 space-y-3">
+                    <div className="w-8 h-8 rounded-full border-3 border-[var(--ink-border)] border-t-[var(--sakura)] animate-spin" />
+                    <span className="text-xs font-bold text-[var(--text-muted)] font-mono">Loading module...</span>
+                  </div>
+                }
+              >
+                {currentTab === 'dashboard' && (
+                  <DashboardView
+                    mocks={mocks}
+                    mistakes={mistakes}
+                    papers={papers}
+                    tasks={tasks}
+                    settings={settings}
+                    onNavigateToTab={(tab) => setCurrentTab(tab)}
+                    onOpenQuickAdd={() => setIsQuickAddOpen(true)}
+                    onOpenDataIntake={() => setIsDataIntakeOpen(true)}
+                    onToggleTask={handleToggleTask}
+                  />
+                )}
 
-          {currentTab === 'mocks' && (
-            <MocksView
-              mocks={mocks}
-              settings={settings}
-              onRefresh={reloadData}
-              onOpenDataIntake={() => setIsDataIntakeOpen(true)}
-            />
-          )}
+                {currentTab === 'mocks' && (
+                  <MocksView
+                    mocks={mocks}
+                    settings={settings}
+                    onRefresh={reloadData}
+                    onOpenDataIntake={() => setIsDataIntakeOpen(true)}
+                  />
+                )}
 
-          {currentTab === 'papers' && (
-            <PapersView
-              papers={papers}
-              settings={settings}
-              onRefresh={reloadData}
-              onNavigateToMocks={() => setCurrentTab('mocks')}
-            />
-          )}
+                {currentTab === 'papers' && (
+                  <PapersView
+                    papers={papers}
+                    settings={settings}
+                    onRefresh={reloadData}
+                    onNavigateToMocks={() => setCurrentTab('mocks')}
+                  />
+                )}
 
-          {currentTab === 'mistakes' && (
-            <MistakesView
-              mistakes={mistakes}
-              mocks={mocks}
-              settings={settings}
-              onRefresh={reloadData}
-              isQuickAddOpenDirectly={isQuickAddOpen}
-              onCloseQuickAddDirectly={() => setIsQuickAddOpen(false)}
-            />
-          )}
+                {currentTab === 'mistakes' && (
+                  <MistakesView
+                    mistakes={mistakes}
+                    mocks={mocks}
+                    settings={settings}
+                    onRefresh={reloadData}
+                    isQuickAddOpenDirectly={isQuickAddOpen}
+                    onCloseQuickAddDirectly={() => setIsQuickAddOpen(false)}
+                  />
+                )}
 
-          {currentTab === 'review' && (
-            <ReviewQueueView
-              mistakes={mistakes}
-              settings={settings}
-              onRefresh={reloadData}
-            />
-          )}
+                {currentTab === 'inbox' && (
+                  <ImportInboxView
+                    initialPayload={studyBridgePayload}
+                    onNavigateToMistakes={() => setCurrentTab('mistakes')}
+                    onNavigateToMocks={() => setCurrentTab('mocks')}
+                  />
+                )}
 
-          {currentTab === 'planner' && (
-            <PlannerView
-              settings={settings}
-              mocks={mocks}
-              mistakes={mistakes}
-              papers={papers}
-              tasks={tasks}
-              onAddTask={handleAddTask}
-              onToggleTask={handleToggleTask}
-              onDeleteTask={handleDeleteTask}
-            />
-          )}
+                {currentTab === 'review' && (
+                  <ReviewQueueView
+                    mistakes={mistakes}
+                    settings={settings}
+                    onRefresh={reloadData}
+                  />
+                )}
 
-          {currentTab === 'cheatsheet' && (
-            <CheatSheetView
-              mistakes={mistakes}
-              settings={settings}
-            />
-          )}
+                {currentTab === 'planner' && (
+                  <PlannerView
+                    settings={settings}
+                    mocks={mocks}
+                    mistakes={mistakes}
+                    papers={papers}
+                    tasks={tasks}
+                    onAddTask={handleAddTask}
+                    onToggleTask={handleToggleTask}
+                    onDeleteTask={handleDeleteTask}
+                  />
+                )}
 
-          {currentTab === 'settings' && (
-            <SettingsView
-              settings={settings}
-              onSettingsSaved={(newS) => setSettings(newS)}
-              onDataResetOrLoaded={reloadData}
-              onOpenDataIntake={() => setIsDataIntakeOpen(true)}
-            />
-          )}
+                {currentTab === 'cheatsheet' && (
+                  <CheatSheetView
+                    mistakes={mistakes}
+                    settings={settings}
+                  />
+                )}
+
+                {currentTab === 'settings' && (
+                  <SettingsView
+                    settings={settings}
+                    onSettingsSaved={(newS) => setSettings(newS)}
+                    onDataResetOrLoaded={reloadData}
+                    onOpenDataIntake={() => setIsDataIntakeOpen(true)}
+                  />
+                )}
+              </Suspense>
+            </motion.div>
+          </AnimatePresence>
         </main>
       </div>
 
       {/* Global Search Modal */}
-      <GlobalSearchModal
-        isOpen={isSearchOpen}
-        onClose={() => setIsSearchOpen(false)}
-        onNavigate={(tab) => setCurrentTab(tab)}
-        mocks={mocks}
-        mistakes={mistakes}
-        papers={papers}
-        tasks={tasks}
-        settings={settings}
-      />
+      <Suspense fallback={null}>
+        <GlobalSearchModal
+          isOpen={isSearchOpen}
+          onClose={() => setIsSearchOpen(false)}
+          onNavigate={(tab) => setCurrentTab(tab)}
+          mocks={mocks}
+          mistakes={mistakes}
+          papers={papers}
+          tasks={tasks}
+          settings={settings}
+        />
+      </Suspense>
 
       {/* Data Intake Hub Modal */}
-      <DataIntakeModal
-        isOpen={isDataIntakeOpen}
-        onClose={() => {
-          setIsDataIntakeOpen(false);
-          setStudyBridgePayload(null);
-        }}
-        settings={settings}
-        onSuccess={() => reloadData()}
-        initialImportPayload={studyBridgePayload}
-        onImportAck={handleStudyBridgeAck}
-      />
+      <Suspense fallback={null}>
+        <DataIntakeModal
+          isOpen={isDataIntakeOpen}
+          onClose={() => {
+            setIsDataIntakeOpen(false);
+            setStudyBridgePayload(null);
+          }}
+          settings={settings}
+          onSuccess={() => reloadData()}
+          initialImportPayload={studyBridgePayload}
+          onImportAck={handleStudyBridgeAck}
+        />
+      </Suspense>
 
-      {/* Keyboard Shortcuts Cheat Sheet Modal */}
-      <KeyboardShortcutsModal
-        isOpen={isShortcutsOpen}
-        onClose={() => setIsShortcutsOpen(false)}
-      />
+      {/* Keyboard Shortcuts Cheat-sheet Modal */}
+      <Suspense fallback={null}>
+        <KeyboardShortcutsModal
+          isOpen={isShortcutsOpen}
+          onClose={() => setIsShortcutsOpen(false)}
+        />
+      </Suspense>
     </div>
   );
 }

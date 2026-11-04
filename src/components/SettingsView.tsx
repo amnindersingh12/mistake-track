@@ -15,6 +15,7 @@ import {
   FileInput,
   FolderOpen
 } from 'lucide-react';
+import { MangaIconSettings } from './MangaIcons';
 
 interface SettingsViewProps {
   settings: ExamSettings;
@@ -37,8 +38,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [confirmClearModal, setConfirmClearModal] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSave = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     await db.settings.put(form);
     onSettingsSaved(form);
     setIsSavedAlert(true);
@@ -149,19 +150,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const activeSection = form.sections.find((s) => s.id === activeSectionTab) || form.sections[0];
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto pb-12">
-      {/* Page Title */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900 dark:text-white">Exam Setup & Data Settings</h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Configure exam structure, marking schemes, topic taxonomies, and manage database backup.
-          </p>
+    <div className="space-y-6 max-w-5xl mx-auto pb-12">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[var(--bg-panel)] p-5 rounded-2xl border-2 border-[var(--ink-border)] shadow-manga">
+        <div className="flex items-center gap-3">
+          <div className="p-3 bg-[var(--sakura-soft)] text-[var(--sakura)] rounded-xl border border-[var(--ink-border)]">
+            <MangaIconSettings className="w-6 h-6" />
+          </div>
+          <div>
+            <h2 className="font-display text-xl font-black tracking-tight text-[var(--ink)] dark:text-[var(--text-main)]">
+              Exam Setup & Engine Settings
+            </h2>
+            <p className="text-xs text-[var(--text-muted)]">
+              Configure exam structure, marking rules, topic taxonomies, and local backup.
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={handleSave}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs"
+            onClick={() => handleSave()}
+            className="manga-btn inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--sakura)] text-[var(--ink)] text-xs font-bold shadow-manga-sm hover:-translate-y-0.5 active:translate-y-0.5 transition-all"
           >
             <Save className="w-4 h-4" />
             <span>Save Settings</span>
@@ -170,7 +178,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </div>
 
       {isSavedAlert && (
-        <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs flex items-center gap-2">
+        <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border-2 border-emerald-500 text-emerald-800 dark:text-emerald-200 text-xs font-bold flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
           <span>Settings successfully saved and applied to your analysis engine!</span>
         </div>
@@ -178,10 +186,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {message && (
         <div
-          className={`p-3 rounded-lg text-xs flex items-center justify-between ${
+          className={`p-3.5 rounded-xl text-xs font-bold flex items-center justify-between border-2 ${
             message.type === 'success'
-              ? 'bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 text-emerald-800 dark:text-emerald-200'
-              : 'bg-rose-50 dark:bg-rose-950/60 border border-rose-200 text-rose-800 dark:text-rose-200'
+              ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500 text-emerald-800 dark:text-emerald-200'
+              : 'bg-rose-50 dark:bg-rose-950/60 border-rose-500 text-rose-800 dark:text-rose-200'
           }`}
         >
           <span>{message.text}</span>
@@ -194,13 +202,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {/* Main Settings Form */}
       <form onSubmit={handleSave} className="space-y-6">
         {/* Exam Profile Presets */}
-        <div className="p-5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs space-y-3">
+        <div className="p-5 bg-[var(--bg-panel)] rounded-2xl border-2 border-[var(--ink-border)] shadow-manga space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
-              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+              <h3 className="font-display text-sm font-bold text-[var(--ink)] dark:text-[var(--text-main)]">
                 Exam Profile Presets
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-[var(--text-muted)]">
                 Switch exam structures and section marking rules instantly without losing your recorded mocks or mistakes.
               </p>
             </div>
@@ -224,23 +232,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     });
                     setActiveSectionTab(profile.sections[0]?.id || 'quant');
                   }}
-                  className={`p-3.5 rounded-xl text-left border transition-all ${
+                  className={`p-3.5 rounded-xl text-left border-2 transition-all ${
                     isSelected
-                      ? 'border-indigo-600 dark:border-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30 ring-2 ring-indigo-500/20'
-                      : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 hover:border-slate-300 dark:hover:border-slate-700'
+                      ? 'border-[var(--ink-border)] bg-[var(--peach)] text-[var(--ink)] shadow-manga-sm'
+                      : 'border-[var(--ink-border)] bg-[var(--bg-surface)] hover:bg-[var(--bg-panel)] text-[var(--text-main)]'
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-xs text-slate-900 dark:text-white">
-                      {profile.name}
-                    </span>
+                    <span className="font-bold text-xs">{profile.name}</span>
                     {isSelected && (
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-600 text-white font-bold">
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--ink)] text-[var(--bg-panel)] font-bold">
                         ACTIVE
                       </span>
                     )}
                   </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 space-y-0.5">
+                  <div className="text-[11px] opacity-80 mt-1 space-y-0.5 font-medium">
                     <p>{profile.sections.length} Sections • {profile.totalTimeMinutes} mins</p>
                     <p>Target: {profile.targetScore} • Cutoff: {profile.overallCutoff}</p>
                   </div>
@@ -251,25 +257,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
 
         {/* Global Exam Info */}
-        <div className="p-5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs space-y-4">
-          <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-            <span>Overall Exam Target & Constraints</span>
+        <div className="p-5 bg-[var(--bg-panel)] rounded-2xl border-2 border-[var(--ink-border)] shadow-manga space-y-4">
+          <h3 className="font-display text-sm font-bold text-[var(--ink)] dark:text-[var(--text-main)]">
+            Overall Exam Target & Constraints
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
-              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+              <label className="block text-xs font-bold text-[var(--ink)] dark:text-[var(--text-main)] mb-1">
                 Exam Name
               </label>
               <input
                 type="text"
                 value={form.examName}
                 onChange={(e) => setForm({ ...form, examName: e.target.value })}
-                className="w-full text-xs px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
+                className="w-full text-xs px-3 py-2 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold text-[var(--ink)] dark:text-[var(--text-main)]"
                 required
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+              <label className="block text-xs font-bold text-[var(--ink)] dark:text-[var(--text-main)] mb-1">
                 Total Time (Minutes)
               </label>
               <input
@@ -278,12 +284,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 max="300"
                 value={form.totalTimeMinutes}
                 onChange={(e) => setForm({ ...form, totalTimeMinutes: Number(e.target.value) || 60 })}
-                className="w-full text-xs px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white"
+                className="w-full text-xs px-3 py-2 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold text-[var(--ink)] dark:text-[var(--text-main)]"
                 required
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+              <label className="block text-xs font-bold text-[var(--ink)] dark:text-[var(--text-main)] mb-1">
                 Overall Target Score
               </label>
               <input
@@ -291,12 +297,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 step="0.5"
                 value={form.targetScore}
                 onChange={(e) => setForm({ ...form, targetScore: Number(e.target.value) || 0 })}
-                className="w-full text-xs px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white"
+                className="w-full text-xs px-3 py-2 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold text-[var(--ink)] dark:text-[var(--text-main)]"
                 required
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+              <label className="block text-xs font-bold text-[var(--ink)] dark:text-[var(--text-main)] mb-1">
                 Overall Exam Cutoff
               </label>
               <input
@@ -304,7 +310,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 step="0.5"
                 value={form.overallCutoff}
                 onChange={(e) => setForm({ ...form, overallCutoff: Number(e.target.value) || 0 })}
-                className="w-full text-xs px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white"
+                className="w-full text-xs px-3 py-2 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold text-[var(--ink)] dark:text-[var(--text-main)]"
                 required
               />
             </div>
@@ -312,15 +318,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
 
         {/* Sectional Configuration & Topic Taxonomies */}
-        <div className="p-5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs space-y-5">
+        <div className="p-5 bg-[var(--bg-panel)] rounded-2xl border-2 border-[var(--ink-border)] shadow-manga space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+            <h3 className="font-display text-sm font-bold text-[var(--ink)] dark:text-[var(--text-main)]">
               Section Settings & Topic Taxonomies
             </h3>
             <button
               type="button"
               onClick={handleAddSection}
-              className="inline-flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-medium"
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-[var(--sakura)] hover:underline"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Add Custom Section</span>
@@ -328,16 +334,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
 
           {/* Section Tabs */}
-          <div className="flex flex-wrap gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
+          <div className="flex flex-wrap gap-2 border-b-2 border-[var(--ink-border)] pb-3">
             {form.sections.map((sec) => (
               <button
                 key={sec.id}
                 type="button"
                 onClick={() => setActiveSectionTab(sec.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border-2 ${
                   activeSectionTab === sec.id
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    ? 'bg-[var(--peach)] text-[var(--ink)] border-[var(--ink-border)] shadow-manga-sm'
+                    : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-transparent hover:border-[var(--ink-border)]'
                 }`}
               >
                 {sec.name} ({sec.topics.length} topics)
@@ -349,18 +355,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="space-y-4 pt-1">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-bold text-[var(--ink)] dark:text-[var(--text-main)] mb-1">
                     Section Name
                   </label>
                   <input
                     type="text"
                     value={activeSection.name}
                     onChange={(e) => handleUpdateSection(activeSection.id, { name: e.target.value })}
-                    className="w-full text-xs px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white"
+                    className="w-full text-xs px-3 py-2 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold text-[var(--ink)] dark:text-[var(--text-main)]"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-bold text-[var(--ink)] dark:text-[var(--text-main)] mb-1">
                     Total Questions
                   </label>
                   <input
@@ -369,11 +375,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     onChange={(e) =>
                       handleUpdateSection(activeSection.id, { totalQuestions: Number(e.target.value) || 0 })
                     }
-                    className="w-full text-xs px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white"
+                    className="w-full text-xs px-3 py-2 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold text-[var(--ink)] dark:text-[var(--text-main)]"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-bold text-[var(--ink)] dark:text-[var(--text-main)] mb-1">
                     Time Limit (Minutes)
                   </label>
                   <input
@@ -382,11 +388,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     onChange={(e) =>
                       handleUpdateSection(activeSection.id, { timeLimitMinutes: Number(e.target.value) || 0 })
                     }
-                    className="w-full text-xs px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white"
+                    className="w-full text-xs px-3 py-2 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold text-[var(--ink)] dark:text-[var(--text-main)]"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-bold text-[var(--ink)] dark:text-[var(--text-main)] mb-1">
                     Marks per Correct Answer
                   </label>
                   <input
@@ -396,11 +402,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     onChange={(e) =>
                       handleUpdateSection(activeSection.id, { marksPerCorrect: Number(e.target.value) || 1.0 })
                     }
-                    className="w-full text-xs px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white"
+                    className="w-full text-xs px-3 py-2 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold text-[var(--ink)] dark:text-[var(--text-main)]"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-bold text-[var(--ink)] dark:text-[var(--text-main)] mb-1">
                     Negative Penalty per Wrong
                   </label>
                   <input
@@ -410,11 +416,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     onChange={(e) =>
                       handleUpdateSection(activeSection.id, { negativeMark: Number(e.target.value) || 0 })
                     }
-                    className="w-full text-xs px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white"
+                    className="w-full text-xs px-3 py-2 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold text-[var(--ink)] dark:text-[var(--text-main)]"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-bold text-[var(--ink)] dark:text-[var(--text-main)] mb-1">
                     Sectional Cutoff
                   </label>
                   <input
@@ -424,37 +430,37 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     onChange={(e) =>
                       handleUpdateSection(activeSection.id, { sectionalCutoff: Number(e.target.value) || 0 })
                     }
-                    className="w-full text-xs px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white"
+                    className="w-full text-xs px-3 py-2 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold text-[var(--ink)] dark:text-[var(--text-main)]"
                   />
                 </div>
               </div>
 
               {/* Topic List */}
               <div className="pt-2">
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-2">
+                <label className="block text-xs font-bold text-[var(--ink)] dark:text-[var(--text-main)] mb-2">
                   Topic Taxonomy for {activeSection.name} ({activeSection.topics.length} topics)
                 </label>
-                <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-2 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60">
+                <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-3 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)]">
                   {activeSection.topics.map((topic) => (
                     <span
                       key={topic}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 shadow-2xs"
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-[var(--bg-panel)] border border-[var(--ink-border)] text-[var(--ink)] dark:text-[var(--text-main)] shadow-xs"
                     >
                       <span>{topic}</span>
                       <button
                         type="button"
                         onClick={() => handleRemoveTopic(activeSection.id, topic)}
-                        className="text-slate-400 hover:text-rose-500"
+                        className="text-[var(--text-muted)] hover:text-rose-500"
                         title="Remove topic"
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-3.5 h-3.5" />
                       </button>
                     </span>
                   ))}
                 </div>
 
                 {/* Add new topic */}
-                <div className="flex gap-2 mt-2">
+                <div className="flex gap-2 mt-3">
                   <input
                     type="text"
                     placeholder={`New topic for ${activeSection.name}...`}
@@ -466,12 +472,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         handleAddTopic(activeSection.id);
                       }
                     }}
-                    className="flex-1 text-xs px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white"
+                    className="flex-1 text-xs px-3 py-2 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold text-[var(--ink)] dark:text-[var(--text-main)]"
                   />
                   <button
                     type="button"
                     onClick={() => handleAddTopic(activeSection.id)}
-                    className="px-3 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 text-xs font-medium"
+                    className="manga-btn px-4 py-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--sakura)] border-2 border-[var(--ink-border)] text-[var(--ink)] dark:text-[var(--text-main)] text-xs font-bold transition-colors"
                   >
                     Add Topic
                   </button>
@@ -479,7 +485,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleRemoveSection(activeSection.id)}
-                      className="px-3 py-1.5 rounded-lg border border-rose-200 dark:border-rose-900 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-medium"
+                      className="px-3 py-2 rounded-xl border-2 border-rose-400 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-bold transition-colors"
                     >
                       Delete Section
                     </button>
@@ -491,34 +497,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
 
         {/* Error Types Taxonomy */}
-        <div className="p-5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs space-y-3">
-          <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+        <div className="p-5 bg-[var(--bg-panel)] rounded-2xl border-2 border-[var(--ink-border)] shadow-manga space-y-3">
+          <h3 className="font-display text-sm font-bold text-[var(--ink)] dark:text-[var(--text-main)]">
             Error-Type Taxonomy ({form.errorTypes.length} types)
           </h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+          <p className="text-xs text-[var(--text-muted)]">
             Used when logging mistakes to track root causes and generate targeted actionable insights.
           </p>
 
-          <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-2 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60">
+          <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-3 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)]">
             {form.errorTypes.map((err) => (
               <span
                 key={err}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 shadow-2xs"
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-[var(--bg-panel)] border border-[var(--ink-border)] text-[var(--ink)] dark:text-[var(--text-main)] shadow-xs"
               >
                 <span>{err}</span>
                 <button
                   type="button"
                   onClick={() => handleRemoveErrorType(err)}
-                  className="text-slate-400 hover:text-rose-500"
+                  className="text-[var(--text-muted)] hover:text-rose-500"
                   title="Remove error type"
                 >
-                  <X className="w-3 h-3" />
+                  <X className="w-3.5 h-3.5" />
                 </button>
               </span>
             ))}
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 mt-3">
             <input
               type="text"
               placeholder="Add new custom error type..."
@@ -530,12 +536,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   handleAddErrorType();
                 }
               }}
-              className="flex-1 text-xs px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white"
+              className="flex-1 text-xs px-3 py-2 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold text-[var(--ink)] dark:text-[var(--text-main)]"
             />
             <button
               type="button"
               onClick={handleAddErrorType}
-              className="px-3 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 text-xs font-medium"
+              className="manga-btn px-4 py-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--sakura)] border-2 border-[var(--ink-border)] text-[var(--ink)] dark:text-[var(--text-main)] text-xs font-bold transition-colors"
             >
               Add Error Type
             </button>
@@ -544,17 +550,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </form>
 
       {/* Database Management & Backup */}
-      <div className="p-6 bg-[var(--card-bg)] rounded-2xl border-2 border-[var(--ink-border)] shadow-manga space-y-4">
+      <div className="p-6 bg-[var(--bg-panel)] rounded-2xl border-2 border-[var(--ink-border)] shadow-manga space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="font-display text-base font-bold text-[var(--ink-border)] flex items-center gap-2">
-            <Database className="w-5 h-5 text-[var(--accent-twilight)]" />
-            <span>Local Storage & Data Intake</span>
+          <h3 className="font-display text-base font-bold text-[var(--ink)] dark:text-[var(--text-main)] flex items-center gap-2">
+            <Database className="w-5 h-5 text-[var(--sakura)]" />
+            <span>Local Storage & Data Integrity</span>
           </h3>
-          <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-[var(--surface-tag)] border border-[var(--ink-border)]">
-            IndexedDB Local-First
+          <span className="text-[11px] font-mono px-2 py-0.5 rounded-lg bg-[var(--bg-surface)] border border-[var(--ink-border)] font-bold">
+            IndexedDB v4 Atomic
           </span>
         </div>
-        <p className="text-xs text-[var(--ink-muted)]">
+        <p className="text-xs text-[var(--text-muted)]">
           All data remains strictly on your device. Export full JSON backups, import via CSV/JSON templates, or process raw files from your local drop folder.
         </p>
 
@@ -563,15 +569,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <button
             type="button"
             onClick={exportAllDataAsJson}
-            className="flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-[var(--ink-border)] bg-[var(--surface-tag)] hover:bg-[var(--accent-sakura)]/20 text-xs font-bold transition-all shadow-manga-sm hover:-translate-y-0.5"
+            className="flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-[var(--ink-border)] bg-[var(--bg-surface)] hover:bg-[var(--sakura-soft)] text-xs font-bold transition-all shadow-manga-sm hover:-translate-y-0.5"
           >
-            <Download className="w-4 h-4 text-[var(--accent-twilight)]" />
+            <Download className="w-4 h-4 text-[var(--sakura)]" />
             <span>Export JSON Backup</span>
           </button>
 
           {/* Import JSON */}
-          <label className="flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-[var(--ink-border)] bg-[var(--surface-tag)] hover:bg-[var(--accent-sakura)]/20 text-xs font-bold cursor-pointer transition-all shadow-manga-sm hover:-translate-y-0.5">
-            <Upload className="w-4 h-4 text-[var(--accent-twilight)]" />
+          <label className="flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-[var(--ink-border)] bg-[var(--bg-surface)] hover:bg-[var(--sakura-soft)] text-xs font-bold cursor-pointer transition-all shadow-manga-sm hover:-translate-y-0.5">
+            <Upload className="w-4 h-4 text-[var(--sakura)]" />
             <span>Restore Backup</span>
             <input type="file" accept=".json" onChange={handleImportJson} className="hidden" />
           </label>
@@ -581,35 +587,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <button
               type="button"
               onClick={onOpenDataIntake}
-              className="flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-[var(--ink-border)] bg-[var(--accent-peach)]/30 hover:bg-[var(--accent-peach)]/50 text-xs font-bold transition-all shadow-manga-sm hover:-translate-y-0.5"
+              className="flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-[var(--ink-border)] bg-[var(--peach-soft)] hover:bg-[var(--peach)]/30 text-xs font-bold transition-all shadow-manga-sm hover:-translate-y-0.5"
             >
-              <FileInput className="w-4 h-4 text-[var(--accent-twilight)]" />
+              <FileInput className="w-4 h-4 text-[var(--peach)]" />
               <span>Data Intake Hub (Paste / CSV)</span>
             </button>
           )}
         </div>
 
         {/* Local file drop folder info */}
-        <div className="p-3.5 rounded-xl border-2 border-dashed border-[var(--ink-border)]/40 bg-[var(--surface-tag)]/50 flex items-start gap-3 text-xs">
-          <FolderOpen className="w-5 h-5 text-[var(--accent-twilight)] shrink-0 mt-0.5" />
+        <div className="p-4 rounded-xl border-2 border-dashed border-[var(--ink-border)] bg-[var(--bg-surface)] flex items-start gap-3 text-xs">
+          <FolderOpen className="w-5 h-5 text-[var(--peach)] shrink-0 mt-0.5" />
           <div className="space-y-1">
-            <div className="font-bold text-[var(--ink-border)]">File Drop Folder: <code>my-data/</code></div>
-            <p className="text-[var(--ink-muted)] leading-relaxed">
-              Drop mock PDFs, screenshots, or CSVs into the <code>/my-data</code> folder in your project directory. Run <code className="font-mono bg-[var(--card-bg)] px-1.5 py-0.5 rounded border border-[var(--ink-border)]/40">npm run import-my-data</code> to automatically extract them and stage them for review.
+            <div className="font-bold text-[var(--ink)] dark:text-[var(--text-main)]">File Drop Folder: <code>my-data/</code></div>
+            <p className="text-[var(--text-muted)] leading-relaxed">
+              Drop mock PDFs, screenshots, or CSVs into the <code>/my-data</code> folder in your project directory. Run <code className="font-mono bg-[var(--bg-panel)] px-1.5 py-0.5 rounded border border-[var(--ink-border)]">npm run import-my-data</code> to automatically extract them and stage them for review.
             </p>
           </div>
         </div>
 
         {/* Danger Zone: Clear Data */}
-        <div className="pt-3 border-t-2 border-[var(--ink-border)]/20 flex items-center justify-between">
+        <div className="pt-3 border-t-2 border-[var(--ink-border)] flex items-center justify-between">
           <div>
             <h4 className="text-xs font-bold text-rose-600 dark:text-rose-400">Clear Database</h4>
-            <p className="text-[11px] text-[var(--ink-muted)]">Permanently wipes all mocks, mistakes, and papers from this browser.</p>
+            <p className="text-[11px] text-[var(--text-muted)]">Permanently wipes all mocks, mistakes, and papers from this browser.</p>
           </div>
           <button
             type="button"
             onClick={() => setConfirmClearModal(true)}
-            className="px-3.5 py-1.5 rounded-xl border-2 border-rose-500 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-100 text-xs font-bold shadow-manga-sm"
+            className="px-4 py-2 rounded-xl border-2 border-rose-500 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-100 text-xs font-bold shadow-manga-sm"
           >
             Clear All Data
           </button>
@@ -618,29 +624,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {/* Confirmation Modal */}
       {confirmClearModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-xl p-5 max-w-sm w-full border border-slate-200 dark:border-slate-800 space-y-4 shadow-xl">
-            <div className="w-10 h-10 rounded-full bg-rose-100 dark:bg-rose-950/80 flex items-center justify-center text-rose-600 mx-auto">
-              <AlertTriangle className="w-5 h-5" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-[var(--bg-panel)] rounded-2xl p-6 max-w-sm w-full border-2 border-[var(--ink-border)] space-y-4 shadow-manga-lg">
+            <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-950/80 border border-rose-500 flex items-center justify-center text-rose-600 mx-auto">
+              <AlertTriangle className="w-6 h-6" />
             </div>
             <div className="text-center">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Are you absolutely sure?</h3>
-              <p className="text-xs text-slate-500 mt-1">
+              <h3 className="font-display text-base font-bold text-[var(--ink)] dark:text-[var(--text-main)]">Are you absolutely sure?</h3>
+              <p className="text-xs text-[var(--text-muted)] mt-1.5">
                 This will delete all your mock test entries, mistake records, and spaced repetition progress.
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setConfirmClearModal(false)}
-                className="flex-1 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-300"
+                className="flex-1 py-2 rounded-xl border-2 border-[var(--ink-border)] bg-[var(--bg-surface)] text-xs font-bold text-[var(--ink)] dark:text-[var(--text-main)]"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleClearAll}
-                className="flex-1 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-xs font-semibold text-white shadow-xs"
+                className="flex-1 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-xs font-bold text-white shadow-manga-sm"
               >
                 Confirm Clear
               </button>
@@ -651,4 +657,3 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     </div>
   );
 };
-

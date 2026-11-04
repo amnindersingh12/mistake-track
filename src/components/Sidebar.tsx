@@ -1,25 +1,28 @@
 import React from 'react';
 import {
-  LayoutDashboard,
-  CheckSquare,
-  AlertOctagon,
-  Brain,
-  Target,
-  FileSpreadsheet,
-  Settings,
-  BookOpen,
-  PlusCircle,
   X,
   Flame,
   Award,
-  Sparkles,
-  Search
+  Sparkles
 } from 'lucide-react';
+import {
+  MangaIconDashboard,
+  MangaIconMocks,
+  MangaIconPapers,
+  MangaIconMistakes,
+  MangaIconInbox,
+  MangaIconReview,
+  MangaIconPlanner,
+  MangaIconCheatSheet,
+  MangaIconSettings,
+  MangaIconPlus,
+  MangaIconSearch
+} from './MangaIcons';
 import { useTheme } from '../context/ThemeContext';
 import { Mascot } from './Mascot';
 import { calculateUserRank } from '../types';
 
-export type NavTab = 'dashboard' | 'mocks' | 'papers' | 'mistakes' | 'review' | 'planner' | 'cheatsheet' | 'settings';
+export type NavTab = 'dashboard' | 'mocks' | 'papers' | 'mistakes' | 'inbox' | 'review' | 'planner' | 'cheatsheet' | 'settings';
 
 interface SidebarProps {
   currentTab: NavTab;
@@ -53,14 +56,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
     badge?: number;
     shortcutKey: string;
   }> = [
-    { id: 'dashboard', label: 'Dashboard', subLabel: 'Command Centre', icon: LayoutDashboard, shortcutKey: '1' },
-    { id: 'mocks', label: 'Mock Log', subLabel: 'Performance Log', icon: CheckSquare, shortcutKey: '2' },
-    { id: 'papers', label: 'Papers Library', subLabel: 'PYQ & Attempts', icon: BookOpen, shortcutKey: '3' },
-    { id: 'mistakes', label: 'Mistake Log', subLabel: 'Error Intelligence', icon: AlertOctagon, shortcutKey: '4' },
-    { id: 'review', label: 'Daily Quest', subLabel: 'Spaced Repetition', icon: Brain, badge: pendingReviewCount, shortcutKey: '5' },
-    { id: 'planner', label: 'Strategy Planner', subLabel: 'Strategy & Goals', icon: Target, shortcutKey: '6' },
-    { id: 'cheatsheet', label: 'Cheat Sheet', subLabel: 'Formula Bank', icon: FileSpreadsheet, shortcutKey: '7' },
-    { id: 'settings', label: 'Settings', subLabel: 'Exam Profiles', icon: Settings, shortcutKey: '8' }
+    { id: 'dashboard', label: 'Dashboard', subLabel: 'Command Centre', icon: MangaIconDashboard, shortcutKey: '1' },
+    { id: 'mocks', label: 'Mock Log', subLabel: 'Performance Log', icon: MangaIconMocks, shortcutKey: '2' },
+    { id: 'papers', label: 'Papers Library', subLabel: 'PYQ & Attempts', icon: MangaIconPapers, shortcutKey: '3' },
+    { id: 'mistakes', label: 'Mistake Log', subLabel: 'Error Intelligence', icon: MangaIconMistakes, shortcutKey: '4' },
+    { id: 'inbox', label: 'Import Inbox', subLabel: 'Testbook Triage', icon: MangaIconInbox, shortcutKey: '5' },
+    { id: 'review', label: 'Daily Quest', subLabel: 'Spaced Repetition', icon: MangaIconReview, badge: pendingReviewCount, shortcutKey: '6' },
+    { id: 'planner', label: 'Strategy Planner', subLabel: 'Strategy & Goals', icon: MangaIconPlanner, shortcutKey: '7' },
+    { id: 'cheatsheet', label: 'Cheat Sheet', subLabel: 'Formula Bank', icon: MangaIconCheatSheet, shortcutKey: '8' },
+    { id: 'settings', label: 'Settings', subLabel: 'Exam Profiles', icon: MangaIconSettings, shortcutKey: '9' }
   ];
 
   const handleNavClick = (tab: NavTab) => {
@@ -116,7 +120,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--action-primary)] text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors shadow-xs"
             >
               <span className="flex items-center gap-2">
-                <Search className="w-3.5 h-3.5 text-[var(--action-primary)]" />
+                <MangaIconSearch className="w-3.5 h-3.5 text-[var(--action-primary)]" />
                 <span>Search everything...</span>
               </span>
               <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-panel)]">
@@ -158,7 +162,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             title="Quick Log Mistake (Press N)"
           >
             <span className="flex items-center gap-2">
-              <PlusCircle className="w-4 h-4" />
+              <MangaIconPlus className="w-4 h-4" />
               <span>Quick Log Mistake</span>
             </span>
             <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-black/15 text-[var(--ink)] font-bold">
