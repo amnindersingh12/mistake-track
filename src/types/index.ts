@@ -1,5 +1,5 @@
 export type ResultType = 'Wrong' | 'Left unattempted' | 'Correct-but-slow';
-export type MistakeStatus = 'New' | 'Reviewing' | 'Mastered';
+export type MistakeStatus = 'New' | 'Active' | 'Reviewing' | 'Mastered' | 'inbox';
 export type Difficulty = 'Easy' | 'Medium' | 'Hard';
 export type AttemptType = 'mock' | 'pyq' | 'memory-based';
 
@@ -77,23 +77,27 @@ export interface ReviewLog {
 
 export interface MistakeEntry {
   id?: number;
-  mockId: number;
+  mockId?: number;
   mockName: string;
   attemptType?: AttemptType;
   paperId?: number;
+  questionId?: string;
   sectionId: string;
   sectionName: string;
   topic: string;
   subtopic?: string;
   questionNumber: number;
   questionText: string;
-  questionImage?: string; // Data URL Base64
+  questionImage?: string; // Data URL Base64 or image key
+  imageId?: number;
   myAnswer: string;
   correctAnswer: string;
   resultType: ResultType;
   errorTypes: string[];
   timeSpentSeconds: number;
   idealTimeSeconds: number;
+  timeSpent?: number;
+  idealTime?: number;
   whatWentWrong: string;
   correctSolution: string;
   betterApproach: string;
@@ -101,6 +105,10 @@ export interface MistakeEntry {
   difficulty: Difficulty;
   tags: string[];
   status: MistakeStatus;
+  // Inbox fields:
+  source?: string;
+  importedAt?: string;
+  batchId?: number;
   // Spaced repetition:
   interval: number; // 0, 1, 3, 7, 14, 30
   consecutiveCorrect: number;
@@ -121,6 +129,42 @@ export interface PaperQuestion {
   solution?: string;
   shortcut?: string;
   topic?: string;
+}
+
+export interface PaperAttempt {
+  id?: number;
+  paperId: number;
+  mockId?: number;
+  questionId: string;
+  sectionId?: string;
+  topic?: string;
+  selected: number | null;
+  correct: boolean;
+  timeSpentSeconds: number;
+  timeSpent?: number;
+  attemptedAt: string; // ISO timestamp
+}
+
+export interface CompressedImage {
+  id?: number;
+  dataUrl: string;
+  mimeType: string;
+  width?: number;
+  height?: number;
+  sizeBytes?: number;
+  createdAt: string;
+}
+
+export interface ImportBatch {
+  id?: number;
+  source: string;
+  importedAt: string;
+  mockId?: number;
+  mockName?: string;
+  totalQuestions: number;
+  untriagedCount: number;
+  status: 'pending' | 'partially-triaged' | 'triaged' | 'discarded';
+  notes?: string;
 }
 
 export interface PaperTest {

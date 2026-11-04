@@ -1,5 +1,16 @@
 import Dexie, { Table } from 'dexie';
-import { ExamSettings, MockTest, MistakeEntry, PaperTest, StudyTask, ExamProfile, SectionConfig } from '../types';
+import {
+  ExamSettings,
+  MockTest,
+  MistakeEntry,
+  PaperTest,
+  PaperAttempt,
+  CompressedImage,
+  ImportBatch,
+  StudyTask,
+  ExamProfile,
+  SectionConfig
+} from '../types';
 
 export const DEFAULT_QUANT_TOPICS = [
   'Percentage',
@@ -228,6 +239,9 @@ export class MistakeNotebookDatabase extends Dexie {
   mocks!: Table<MockTest, number>;
   mistakes!: Table<MistakeEntry, number>;
   papers!: Table<PaperTest, number>;
+  paperAttempts!: Table<PaperAttempt, number>;
+  images!: Table<CompressedImage, number>;
+  importBatches!: Table<ImportBatch, number>;
   tasks!: Table<StudyTask, number>;
   profiles!: Table<ExamProfile, string>;
 
@@ -259,6 +273,41 @@ export class MistakeNotebookDatabase extends Dexie {
       const count = await profilesTable.count();
       if (count === 0) {
         await profilesTable.bulkPut(DEFAULT_PROFILES);
+      }
+    });
+
+    this.version(4).stores({
+      settings: 'id',
+      mocks: '++id, name, date, source, attemptType, totalNetScore, overallAccuracy',
+      mistakes: '++id, mockId, paperId, questionId, sectionId, topic, subtopic, resultType, status, batchId, interval, nextReviewDate, createdAt',
+      papers: '++id, examName, year, isMemoryBased, createdAt',
+      paperAttempts: '++id, paperId, mockId, questionId, selected, correct, timeSpentSeconds, attemptedAt',
+      images: '++id, mimeType, createdAt',
+      importBatches: '++id, source, status, importedAt',
+      tasks: '++id, dueDate, isCompleted, priority, subject, topic, createdAt',
+      profiles: 'id, name, isDefault, createdAt'
+    }).upgrade(async tx => {
+      const mocks = await tx.table('mocks').toArray();
+      const mockIds = new Set(mocks.map((m: { id?: number }) => m.id));
+      const mistakes = await tx.table('mistakes').toArray();
+      const migrated = mistakes.map((mistake: MistakeEntry) => {
+        const next: any = { ...mistake };
+        if (next.mockId !== undefined && !mockIds.has(next.mockId)) {
+          delete next.mockId;
+        }
+        if (next.mockId === undefined && (!next.mockName || next.mockName === 'Mock Test')) {
+          next.mockName = 'External / unlinked';
+        }
+        if (!Array.isArray(next.errorTypes)) {
+          next.errorTypes = next.errorType ? [next.errorType] : ['Unclassified'];
+        }
+        if (!Array.isArray(next.tags)) {
+          next.tags = ['user-logged'];
+        }
+        return next;
+      });
+      if (migrated.length > 0) {
+        await tx.table('mistakes').bulkPut(migrated);
       }
     });
   }
@@ -316,6 +365,9 @@ export async function clearAllUserData(): Promise<void> {
   await db.mistakes.clear();
   await db.mocks.clear();
   await db.papers.clear();
+  await db.paperAttempts.clear();
+  await db.images.clear();
+  await db.importBatches.clear();
   await db.tasks.clear();
   await db.settings.put(DEFAULT_SETTINGS);
 }

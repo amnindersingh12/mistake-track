@@ -173,7 +173,7 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
 
   const openEdit = (m: MistakeEntry) => {
     setEditingMistakeId(m.id || null);
-    setSelectedMockId(m.mockId);
+    setSelectedMockId(m.mockId || 1);
     setSectionId(m.sectionId);
     setTopic(m.topic);
     setSubtopic(m.subtopic || '');

@@ -217,7 +217,9 @@ export function generateInsights(
       if (!errorMockTracker[key]) {
         errorMockTracker[key] = { mocks: new Set(), section: m.sectionName, totalCount: 0 };
       }
-      errorMockTracker[key].mocks.add(m.mockId);
+      if (m.mockId !== undefined) {
+        errorMockTracker[key].mocks.add(m.mockId);
+      }
       errorMockTracker[key].totalCount++;
     }
   }
