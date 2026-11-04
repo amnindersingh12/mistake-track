@@ -238,7 +238,7 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
   // Check for duplicate mocks in Dexie by name and date
   useEffect(() => {
     async function checkDuplicate() {
-      if (!fullScanMockName.trim() || !fullScanDate) {
+      if (!isOpen || activeTab !== 'fullscan' || !fullScanMockName.trim() || !fullScanDate) {
         setIsDuplicateMock(false);
         return;
       }
@@ -249,10 +249,8 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
         setIsDuplicateMock(false);
       }
     }
-    if (activeTab === 'fullscan') {
-      checkDuplicate();
-    }
-  }, [fullScanMockName, fullScanDate, activeTab]);
+    checkDuplicate();
+  }, [isOpen, activeTab, fullScanMockName, fullScanDate]);
 
   if (!isOpen) return null;
 
