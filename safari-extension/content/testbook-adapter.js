@@ -65,10 +65,19 @@
     const missingFields = [];
 
     // Verify modal visibility if summary is inside a modal
-    const summaryModal = document.querySelector('#summaryModal, .modal.summary-modal');
+    const summaryModal = document.querySelector('#summaryModal, .modal.summary-modal, .modal_app-content');
     if (summaryModal) {
       if (summaryModal.getAttribute('aria-hidden') === 'true' || !isElementVisible(summaryModal)) {
         throw new Error('Summary modal is closed. Please open the Summary modal on Testbook first.');
+      }
+    } else {
+      // Check if Testbook redesigned modal class names
+      const genericModal = document.querySelector('.modal, [role="dialog"], [aria-modal="true"], dialog, .dialog');
+      if (genericModal) {
+        throw new Error(
+          '[Testbook Markup Changed] Testbook summary modal detected but class names have been redesigned. ' +
+          'Update "summaryModal" in src/utils/testbookAdapter.ts.'
+        );
       }
     }
 
@@ -109,7 +118,10 @@
       document.querySelector('table.table-bordered');
 
     if (!table || !isElementVisible(table)) {
-      throw new Error('Visible Testbook summary table not found on page.');
+      throw new Error(
+        '[Testbook Markup Changed] Visible Testbook summary table not found on page. ' +
+        'Update "summaryTable" in src/utils/testbookAdapter.ts.'
+      );
     }
 
     const sections = [];
@@ -207,7 +219,10 @@
 
     const questionsContainer = document.querySelector('#questions') || document.querySelector('.detailed-question');
     if (!questionsContainer || !isElementVisible(questionsContainer)) {
-      throw new Error('No active Testbook question is currently visible.');
+      throw new Error(
+        '[Testbook Markup Changed] No active Testbook question is currently visible. ' +
+        'Update "questionContainer" in src/utils/testbookAdapter.ts.'
+      );
     }
 
     let questionNumber = 1;

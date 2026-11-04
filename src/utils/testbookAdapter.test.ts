@@ -21,6 +21,39 @@ describe('Testbook DOM Adapter - sampletestbook.html Full Regression Suite', () 
       expect(() => extractVisibleSummary(doc)).toThrow('Summary modal is closed');
     });
 
+    it('throws TestbookMarkupError with exact selector name when modal class names are redesigned', () => {
+      // Simulate Testbook redesigning modal classes (generic dialog exists without #summaryModal or .modal_app-content)
+      const dom = new JSDOM('<div class="modal redesigned-summary-dialog" role="dialog"><div class="modal-content"><p>Scorecard</p></div></div>');
+      const doc = dom.window.document;
+
+      try {
+        extractVisibleSummary(doc);
+        expect.unreachable('Should have thrown TestbookMarkupError');
+      } catch (err) {
+        expect(err).toBeInstanceOf(TestbookMarkupError);
+        const markupErr = err as TestbookMarkupError;
+        expect(markupErr.selectorName).toBe('summaryModal');
+        expect(markupErr.attemptedSelector).toBe('#summaryModal, .modal_app-content');
+        expect(markupErr.message).toContain('[Testbook Markup Changed]');
+        expect(markupErr.message).toContain('Update "summaryModal" in src/utils/testbookAdapter.ts');
+      }
+    });
+
+    it('throws TestbookMarkupError with exact selector name when summaryTable is missing in opened modal', () => {
+      const dom = new JSDOM('<div id="summaryModal" class="modal in"><div class="modal-body"><h4>Total Marks: 50</h4><p>No table</p></div></div>');
+      const doc = dom.window.document;
+
+      try {
+        extractVisibleSummary(doc);
+        expect.unreachable('Should have thrown TestbookMarkupError');
+      } catch (err) {
+        expect(err).toBeInstanceOf(TestbookMarkupError);
+        const markupErr = err as TestbookMarkupError;
+        expect(markupErr.selectorName).toBe('summaryTable');
+        expect(markupErr.message).toContain('Update "summaryTable" in src/utils/testbookAdapter.ts');
+      }
+    });
+
     it('extracts exact expected summary metrics when modal is opened by user', () => {
       const dom = new JSDOM(sampleHtml);
       const doc = dom.window.document;

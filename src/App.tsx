@@ -79,6 +79,7 @@ export function App() {
       );
 
       setStudyBridgePayload(payload);
+      setIsDataIntakeOpen(true);
       setCurrentTab('inbox');
     };
 

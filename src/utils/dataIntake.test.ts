@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest';
 import {
   parseTestbookPastedText,
   validateStudyBridgePayload,
-  parseTimeString
+  parseTimeString,
+  parseMockCsv
 } from './dataIntake';
+import { ExamSettings } from '../types';
 import { DEFAULT_SETTINGS } from '../db/db';
 
 describe('StudyBridge Data Intake & Parser', () => {
@@ -336,6 +338,69 @@ Rule to Remember: For two opposing rates, use AB/(B-A) directly.`;
       const res = validateStudyBridgePayload(msg);
       expect(res.isValid).toBe(true);
       expect(res.payload?.text).toBe('IBPS PO Prelims Mock 02');
+    });
+
+    it('parseMockCsv parses mock results using active exam settings sections dynamically', () => {
+      const customSettings: ExamSettings = {
+        id: 'current',
+        examName: 'Custom Exam',
+        totalTimeMinutes: 60,
+        targetScore: 78,
+        overallCutoff: 40,
+        sections: [
+          {
+            id: 'domain_tech',
+            name: 'Domain Technical',
+            totalQuestions: 50,
+            timeLimitMinutes: 45,
+            marksPerCorrect: 2,
+            negativeMark: 0.5,
+            sectionalCutoff: 30,
+            topics: ['DSA', 'DB']
+          },
+          {
+            id: 'gen_apt',
+            name: 'General Aptitude',
+            totalQuestions: 25,
+            timeLimitMinutes: 15,
+            marksPerCorrect: 1,
+            negativeMark: 0.25,
+            sectionalCutoff: 10,
+            topics: ['Verbal']
+          }
+        ],
+        errorTypes: ['Concept gap']
+      };
+
+      const csvContent = [
+        'Mock Name,Date (YYYY-MM-DD),Domain Technical Attempted,Domain Technical Correct,Domain Technical Wrong,General Aptitude Attempted,General Aptitude Correct,General Aptitude Wrong',
+        'Tech Mock 1,2026-11-01,40,30,10,20,16,4'
+      ].join('\n');
+
+      const result = parseMockCsv(csvContent, customSettings);
+      expect(result.errors.length).toBe(0);
+      expect(result.records.length).toBe(1);
+
+      const parsed = result.records[0];
+      expect(parsed.name).toBe('Tech Mock 1');
+      expect(parsed.sections.length).toBe(2);
+
+      // Section 1: 30 * 2 - 10 * 0.5 = 60 - 5 = 55 net score
+      expect(parsed.sections[0].netScore).toBe(55);
+      expect(parsed.sections[0].unattempted).toBe(10); // 50 - 40
+      expect(parsed.sections[0].marksLostNegative).toBe(5);
+
+      // Section 2: 16 * 1 - 4 * 0.25 = 16 - 1 = 15 net score
+      expect(parsed.sections[1].netScore).toBe(15);
+      expect(parsed.sections[1].unattempted).toBe(5); // 25 - 20
+      expect(parsed.sections[1].marksLostNegative).toBe(1);
+
+      // Total Net Score: 55 + 15 = 70
+      expect(parsed.totalNetScore).toBe(70);
+      expect(parsed.totalAttempted).toBe(60);
+      expect(parsed.totalCorrect).toBe(46);
+      expect(parsed.totalWrong).toBe(14);
+      expect(parsed.totalUnattempted).toBe(15);
     });
   });
 });

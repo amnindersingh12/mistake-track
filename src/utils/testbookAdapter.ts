@@ -95,10 +95,13 @@ export const TESTBOOK_SELECTORS = {
 
 /**
  * Custom error thrown when Testbook alters markup, preventing silent data corruption.
+ * Informs the user/developer of the exact selector name to update in src/utils/testbookAdapter.ts.
  */
 export class TestbookMarkupError extends Error {
   constructor(public selectorName: string, public attemptedSelector: string, message: string) {
-    super(`[Testbook Markup Changed] ${message} (Selector: "${attemptedSelector}")`);
+    super(
+      `[Testbook Markup Changed] ${message} (Selector: "${attemptedSelector}"). Update "${selectorName}" in src/utils/testbookAdapter.ts.`
+    );
     this.name = 'TestbookMarkupError';
   }
 }
@@ -173,7 +176,17 @@ export function extractVisibleSummary(root: Document | Element): ExtractedResult
 
   // 1. Check for Summary modal or container
   const modalEl = root.querySelector(TESTBOOK_SELECTORS.summaryModal);
-  if (modalEl) {
+  if (!modalEl) {
+    // If a generic modal or dialog is present, Testbook redesigned its modal class names
+    const genericModal = root.querySelector('.modal, [role="dialog"], [aria-modal="true"], dialog, .dialog');
+    if (genericModal) {
+      throw new TestbookMarkupError(
+        'summaryModal',
+        TESTBOOK_SELECTORS.summaryModal,
+        'Testbook summary modal detected but class names have been redesigned.'
+      );
+    }
+  } else {
     const isModalVis = isElementVisible(modalEl);
     const ariaHidden = modalEl.getAttribute('aria-hidden');
     const hasShowClass = modalEl.classList.contains('show') || modalEl.classList.contains('in');
