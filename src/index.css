@@ -1,0 +1,196 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Morning Theme (Light) - High Contrast WCAG AA/AAA */
+  --bg-primary: #EBF4FC;
+  --bg-secondary: #F1F5F9;
+  --bg-sky: #E2EEF8;
+  --bg-panel: #FFFFFF;
+  --bg-surface: #F8FAFC;
+  
+  --text-primary: #0F172A;     /* Slate 900: 18.7:1 on #FFFFFF (AAA) */
+  --text-secondary: #334155;   /* Slate 700: 9.6:1 on #FFFFFF (AAA) */
+  --text-muted: #64748B;       /* Slate 500: 4.8:1 on #FFFFFF (AA) */
+  
+  --border-primary: #0F172A;   /* Manga crisp ink outline */
+  --border-subtle: #CBD5E1;
+  --ink: #0F172A;
+  --ink-border: #0F172A;
+  
+  --action-primary: #2563EB;   /* Royal Blue: 4.7:1 with white text */
+  --action-primary-hover: #1D4ED8;
+  --action-primary-text: #FFFFFF;
+  
+  --status-success: #15803D;   /* 4.5:1 on light */
+  --status-warning: #B45309;   /* 4.7:1 on light */
+  --status-error: #DC2626;     /* 4.7:1 on light */
+  
+  /* Anime & Manga Palette (Refined for contrast) */
+  --sakura: #DB2777;           /* Deep rose */
+  --sakura-soft: #FCE7F3;
+  --peach: #EA580C;
+  --peach-soft: #FFEDD5;
+  --mint: #059669;
+  --mint-soft: #D1FAE5;
+  --matcha: #059669;
+  --teal: #0D9488;
+  
+  --text-main: #0F172A;
+  --halftone: rgba(15, 23, 42, 0.05);
+}
+
+.dark {
+  /* Night Theme (Dark) - High Contrast WCAG AA/AAA */
+  --bg-primary: #0B0F19;       /* Deep dusk night */
+  --bg-secondary: #0F172A;
+  --bg-sky: #0B0F19;
+  --bg-panel: #111827;         /* Panel slate 900 */
+  --bg-surface: #1E293B;       /* Surface slate 800 */
+  
+  --text-primary: #F8FAFC;     /* Slate 50: 15.8:1 on #111827 (AAA) */
+  --text-secondary: #CBD5E1;   /* Slate 300: 9.7:1 on #111827 (AAA) */
+  --text-muted: #94A3B8;       /* Slate 400: 5.4:1 on #111827 (AA) */
+  
+  --border-primary: #38BDF8;   /* Sky glow border / manga line */
+  --border-subtle: #334155;
+  --ink: #F8FAFC;
+  --ink-border: #38BDF8;
+  
+  --action-primary: #2563EB;   /* Royal Blue: 5.2:1 with white text */
+  --action-primary-hover: #60A5FA;
+  --action-primary-text: #FFFFFF;
+  
+  --status-success: #34D399;   /* 8.2:1 on #111827 */
+  --status-warning: #FBBF24;   /* 10.5:1 on #111827 */
+  --status-error: #F87171;     /* 6.3:1 on #111827 */
+  
+  /* Anime & Manga Palette (Night) */
+  --sakura: #F472B6;           /* Anime pink */
+  --sakura-soft: rgba(244, 114, 182, 0.15);
+  --peach: #FB923C;
+  --peach-soft: rgba(251, 146, 60, 0.15);
+  --mint: #34D399;
+  --mint-soft: rgba(52, 211, 153, 0.15);
+  --matcha: #34D399;
+  --teal: #38BDF8;
+  
+  --text-main: #F8FAFC;
+  --halftone: rgba(56, 189, 248, 0.08);
+}
+
+@layer base {
+  body {
+    background-color: var(--bg-sky);
+    color: var(--text-primary);
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+  }
+}
+
+/* Halftone Screentone Pattern */
+.halftone-dots {
+  background-image: radial-gradient(var(--halftone) 1.5px, transparent 1.5px);
+  background-size: 10px 10px;
+}
+
+/* Manga Panel Borders */
+.manga-panel {
+  border: 2px solid var(--border-subtle);
+  box-shadow: 3px 3px 0px var(--ink-border);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.manga-panel:hover {
+  box-shadow: 4px 5px 0px var(--ink-border);
+}
+
+.manga-btn {
+  border: 2px solid var(--ink-border);
+  box-shadow: 2.5px 2.5px 0px var(--ink-border);
+  transition: all 0.15s ease-out;
+}
+
+.manga-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 3.5px 4px 0px var(--ink-border);
+}
+
+.manga-btn:active {
+  transform: translateY(1.5px);
+  box-shadow: 1px 1px 0px var(--ink-border);
+}
+
+/* Washi Tape Corner Detail */
+.washi-tape {
+  position: relative;
+}
+.washi-tape::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  right: 20px;
+  width: 60px;
+  height: 18px;
+  background-color: rgba(244, 114, 182, 0.4);
+  transform: rotate(-3deg);
+  border: 1px dashed rgba(15, 23, 42, 0.3);
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* Speech Bubble Tooltip Tail */
+.speech-bubble {
+  position: relative;
+}
+.speech-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: 24px;
+  border-width: 8px 8px 0;
+  border-style: solid;
+  border-color: var(--bg-surface) transparent;
+  display: block;
+  width: 0;
+}
+
+/* 3D Flip Card Styles */
+.perspective-1000 {
+  perspective: 1000px;
+}
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+.backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+
+/* Print CSS */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  aside,
+  header,
+  nav,
+  button,
+  .print\:hidden {
+    display: none !important;
+  }
+  main {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+  }
+}

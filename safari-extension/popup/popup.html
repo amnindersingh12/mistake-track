@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StudyBridge</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="manga-frame">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo-icon">SB</div>
+        <div>
+          <h1 class="title">StudyBridge</h1>
+          <p class="subtitle">Testbook Import Bridge</p>
+        </div>
+      </div>
+      <span class="version-tag">Manga v2.0</span>
+    </header>
+
+    <!-- Indicators Panel -->
+    <section class="panel status-panel">
+      <!-- Connection Indicator -->
+      <div class="indicator-row">
+        <span class="label">Study App:</span>
+        <div id="conn-badge" class="badge badge-neutral">
+          <span class="dot"></span>
+          <span id="conn-text">Checking...</span>
+        </div>
+      </div>
+
+      <!-- Source Indicator -->
+      <div class="indicator-row">
+        <span class="label">Source Tab:</span>
+        <div id="source-badge" class="badge badge-neutral">
+          <span class="dot"></span>
+          <span id="source-text">Inspecting...</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Context Info Panel -->
+    <section class="panel info-panel">
+      <div class="meta-item">
+        <span class="meta-label">Page Title</span>
+        <div id="page-title" class="meta-value truncate">—</div>
+      </div>
+      <div class="meta-grid">
+        <div class="meta-item">
+          <span class="meta-label">Detected Review</span>
+          <div id="review-context" class="meta-value highlight">None visible</div>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Selected Text</span>
+          <div id="selection-count" class="meta-value highlight">0 chars</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3 Action Modes Section -->
+    <section class="actions-panel">
+      <!-- Mode A: Import Result Summary -->
+      <button id="import-summary-btn" class="manga-btn action-mode-btn primary-peach" disabled>
+        <span class="btn-icon">📊</span>
+        <div class="btn-text-wrap">
+          <span class="btn-title">Import Result Summary</span>
+          <span class="btn-desc" id="summary-hint">Overall marks & section breakdown</span>
+        </div>
+      </button>
+
+      <!-- Mode B: Import Current Question -->
+      <button id="import-question-btn" class="manga-btn action-mode-btn primary-sakura" disabled>
+        <span class="btn-icon">❓</span>
+        <div class="btn-text-wrap">
+          <span class="btn-title">Import Current Question</span>
+          <span class="btn-desc" id="question-hint">Statement, options & visible solution</span>
+        </div>
+      </button>
+
+      <!-- Mode C: Import Selected Text -->
+      <button id="import-selection-btn" class="manga-btn action-mode-btn secondary-btn" disabled>
+        <span class="btn-icon">📝</span>
+        <div class="btn-text-wrap">
+          <span class="btn-title">Send Selected Text</span>
+          <span class="btn-desc" id="selection-hint">Fallback for highlighted text</span>
+        </div>
+      </button>
+    </section>
+
+    <!-- Status Alert Messages -->
+    <div id="status-alert" class="status-alert hidden" role="alert"></div>
+
+    <!-- Footer & Settings Toggle -->
+    <footer class="footer">
+      <button id="toggle-settings" class="settings-toggle">
+        <span>⚙️ Configuration</span>
+      </button>
+      <div id="settings-box" class="settings-box hidden">
+        <label for="app-url-input" class="settings-label">Study App Origin / URL:</label>
+        <div class="settings-input-group">
+          <input type="url" id="app-url-input" placeholder="http://127.0.0.1:5173" spellcheck="false" />
+          <button id="save-settings-btn" class="manga-btn btn-save">Save</button>
+        </div>
+        <p class="settings-hint">Default: http://127.0.0.1:5173</p>
+      </div>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

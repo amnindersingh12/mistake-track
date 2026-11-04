@@ -1,0 +1,94 @@
+{
+  "examId": "Sample Exam - 1",
+  "totalQuestions": 2,
+  "sections": [
+    "General Awareness",
+    "Professional Knowledge"
+  ],
+  "summary": {
+    "total": 2,
+    "correct": 1,
+    "incorrect": 0,
+    "unattempted": 1
+  },
+  "questions": [
+    {
+      "questionNumber": 1,
+      "section": "English Language",
+      "passage": "Directions: Rearrange the following six sentences (A), (B), (C), (D), (E) and (F) in the proper sequence to form a meaningful paragraph and then answer the questions.\n\n(A) On the other hand, Prime Minister Narendra Modi has gone on record saying that labour laws should be viewed from workers’ point of view.\n\n(B) On the one hand, industry is demanding dilution of industrial laws so that profit can be maximised at the cost of the quality of life of the workers and their families.\n\n(C) The country is at the crossroads to make a crucial choice between the demands of industry for labour reforms and the legitimate democratic demands for labour laws that are in consonance with the constitutional mandate for a welfare state.\n\n(D) Once again a debate has started on the possible reforms in the labour sector encompassing labour laws and labour relations.\n\n(E) They need to be rescued from apathy and exploitation.\n\n(F) There is an urgent need to introduce labour reforms to protect millions of contract labour who are engaged in nation-building through their dedicated service but are working in pitiable conditions in various industrial and government establishments.",
+      "question": "Which of the following will be the LAST sentence after rearrangement?",
+      "options": [
+        {
+          "index": 0,
+          "label": "A",
+          "text": "A"
+        },
+        {
+          "index": 1,
+          "label": "B",
+          "text": "D"
+        },
+        {
+          "index": 2,
+          "label": "C",
+          "text": "E"
+        },
+        {
+          "index": 3,
+          "label": "D",
+          "text": "B"
+        },
+        {
+          "index": 4,
+          "label": "E",
+          "text": "C"
+        }
+      ],
+      "correctOptionIndex": 2,
+      "correctOptionLabel": "C",
+      "userOptionIndex": null,
+      "userOptionLabel": null,
+      "status": "unattempted",
+      "solution": "The passage discusses the debate surrounding the need for reforms in labour laws. It discusses how on the one hand, while the Prime Minister announced pertinent reforms in labour law in favour of the workers, the industrialists on the other hand sought to maximise profit while ignoring the needs of these labourers. (D) opens the discussion. (B) takes the debate further, as it discusses the demands of the industrialists in order to maximise profit. This however is not considerate towards the needs of the labourers. (A) will follow, because while (B) begins with ‘on the one hand’, (A) begins with ‘on the other hand’. (A) in opposition to (B) states Modi’s statement that labour laws must benefit the workers and not solely seek to maximise profit. (C) is a comment on the preceding statements. Next, (F) reiterates the importance and urgency of reforms to be brought in labour laws in favour of the contract labourers. (E), concludes the paragraph. It must follow (F), since ‘they’ in the beginning of the sentence refers to contract labourers already mentioned in (F). Hence, the proper sequence is (D), (B), (A), (C), (F) and (E)"
+    },
+    {
+      "questionNumber": 2,
+      "section": "English Language",
+      "passage": "Directions: Rearrange the following six sentences (A), (B), (C), (D), (E) and (F) in the proper sequence to form a meaningful paragraph and then answer the questions.\n\n(A) On the other hand, Prime Minister Narendra Modi has gone on record saying that labour laws should be viewed from workers&rsquo; point of view.\n\n(B) On the one hand, industry is demanding dilution of industrial laws so that profit can be maximised at the cost of the quality of life of the workers and their families.\n\n(C) The country is at the crossroads to make a crucial choice between the demands of industry for labour reforms and the legitimate democratic demands for labour laws that are in consonance with the constitutional mandate for a welfare state.\n\n(D) Once again a debate has started on the possible reforms in the labour sector encompassing labour laws and labour relations.\n\n(E) They need to be rescued from apathy and exploitation.\n\n(F) There is an urgent need to introduce labour reforms to protect millions of contract labour who are engaged in nation-building through their dedicated service but are working in pitiable conditions in various industrial and government establishments.",
+      "question": "Which of the following will be the SECOND sentence after rearrangement?",
+      "options": [
+        {
+          "index": 0,
+          "label": "A",
+          "text": "C"
+        },
+        {
+          "index": 1,
+          "label": "B",
+          "text": "A"
+        },
+        {
+          "index": 2,
+          "label": "C",
+          "text": "D"
+        },
+        {
+          "index": 3,
+          "label": "D",
+          "text": "E"
+        },
+        {
+          "index": 4,
+          "label": "E",
+          "text": "B"
+        }
+      ],
+      "correctOptionIndex": 4,
+      "correctOptionLabel": "E",
+      "userOptionIndex": null,
+      "userOptionLabel": null,
+      "status": "unattempted",
+      "solution": "The passage discusses the debate surrounding the need for reforms in labour laws. It discusses how on the one hand, while the Prime Minister announced pertinent reforms in labour law in favour of the workers, the industrialists on the other hand sought to maximise profit while ignoring the needs of these labourers. (D) opens the discussion. (B) takes the debate further, as it discusses the demands of the industrialists in order to maximise profit. This however is not considerate towards the needs of the labourers. (A) will follow, because while (B) begins with &lsquo;on the one hand&rsquo;, (A) begins with &lsquo;on the other hand&rsquo;. (A) in opposition to (B) states Modi&rsquo;s statement that labour laws must benefit the workers and not solely seek to maximise profit. (C) is a comment on the preceding statements. Next, (F) reiterates the importance and urgency of reforms to be brought in labour laws in favour of the contract labourers. (E), concludes the paragraph. It must follow (F), since &lsquo;they&rsquo; in the beginning of the sentence refers to contract labourers already mentioned in (F). Hence, the proper sequence is (D), (B), (A), (C), (F) and (E)"
+    }
+  ]
+}

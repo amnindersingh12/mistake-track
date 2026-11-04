@@ -1,0 +1,9 @@
+.venv/
+venv/
+env/
+envs/
+__pycache__/
+graphify-out/
+.agents/
+notes/pages/*
+*/*

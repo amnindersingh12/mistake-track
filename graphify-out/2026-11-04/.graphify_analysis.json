@@ -1,0 +1,414 @@
+{
+  "communities": {
+    "0": [
+      "ref_lucide_react",
+      "src_components_cheatsheetview",
+      "src_components_cheatsheetview_cheatsheetviewprops",
+      "src_components_dashboardview_dashboardviewprops",
+      "src_components_mistakesview",
+      "src_components_mistakesview_mistakesviewprops",
+      "src_components_mocksview",
+      "src_components_mocksview_mocksviewprops",
+      "src_components_paperexammodal",
+      "src_components_paperexammodal_paperexammodalprops",
+      "src_components_papersview",
+      "src_components_papersview_papersviewprops",
+      "src_components_plannerview_plannerviewprops",
+      "src_components_reviewqueueview_reviewqueueviewprops",
+      "src_components_settingsview",
+      "src_components_settingsview_settingsview",
+      "src_components_settingsview_settingsviewprops",
+      "src_db_db",
+      "src_db_db_clearalluserdata",
+      "src_db_db_db",
+      "src_db_db_mistakenotebookdatabase",
+      "src_db_db_mistakenotebookdatabase_constructor",
+      "src_types_index",
+      "src_types_index_difficulty",
+      "src_types_index_examsettings",
+      "src_types_index_mistakeentry",
+      "src_types_index_mocktest",
+      "src_types_index_paperquestion",
+      "src_types_index_papertest",
+      "src_types_index_plannerinput",
+      "src_types_index_plannerresult",
+      "src_types_index_resulttype",
+      "src_types_index_reviewlog",
+      "src_types_index_sectionconfig",
+      "src_types_index_sectionperformance",
+      "src_types_index_userrank",
+      "src_types_index_whatifresult",
+      "src_types_index_whatifsectioninput",
+      "src_utils_exportimport",
+      "src_utils_exportimport_backuppayload",
+      "src_utils_exportimport_exportalldataasjson",
+      "src_utils_exportimport_exportmistakesascsv",
+      "src_utils_exportimport_importdatafromjson"
+    ],
+    "1": [
+      "ref_react",
+      "src_app",
+      "src_app_app",
+      "src_components_cheatsheetview_cheatsheetview",
+      "src_components_dashboardview_dashboardview",
+      "src_components_livingsky",
+      "src_components_livingsky_livingsky",
+      "src_components_mascot",
+      "src_components_mascot_mascot",
+      "src_components_mascot_mascotmood",
+      "src_components_mascot_mascotprops",
+      "src_components_mistakesview_mistakesview",
+      "src_components_mocksview_mocksview",
+      "src_components_paperexammodal_paperexammodal",
+      "src_components_papersview_papersview",
+      "src_components_reviewqueueview",
+      "src_components_reviewqueueview_reviewqueueview",
+      "src_components_sidebar",
+      "src_components_sidebar_navtab",
+      "src_components_sidebar_sidebar",
+      "src_components_sidebar_sidebarprops",
+      "src_context_themecontext",
+      "src_context_themecontext_theme",
+      "src_context_themecontext_themecontext",
+      "src_context_themecontext_themecontexttype",
+      "src_context_themecontext_themeprovider",
+      "src_context_themecontext_usetheme",
+      "src_db_db_default_settings",
+      "src_db_db_ensuresettings",
+      "src_index",
+      "src_main",
+      "src_types_index_calculateuserrank",
+      "src_types_index_mistakestatus",
+      "src_utils_srs",
+      "src_utils_srs_adddaystodate",
+      "src_utils_srs_gettodaydatestr",
+      "src_utils_srs_processsrsreview",
+      "src_utils_srs_srs_intervals"
+    ],
+    "2": [
+      "ref_fs",
+      "ref_path",
+      "scripts_extract_mock",
+      "scripts_extract_mock_cleanhtmltext",
+      "scripts_extract_mock_decodetoken",
+      "scripts_extract_mock_defaulthtml",
+      "scripts_extract_mock_defaultjson",
+      "scripts_extract_mock_fs",
+      "scripts_extract_mock_html",
+      "scripts_extract_mock_parseoliveboardhtml",
+      "scripts_extract_mock_path",
+      "scripts_extract_mock_result",
+      "scripts_import_my_data",
+      "scripts_import_my_data_bundle",
+      "scripts_import_my_data_files",
+      "scripts_import_my_data_fs",
+      "scripts_import_my_data_my_data_dir",
+      "scripts_import_my_data_output_bundle",
+      "scripts_import_my_data_path",
+      "scripts_pipeline",
+      "scripts_pipeline_allmocks",
+      "scripts_pipeline_cleanmockdata",
+      "scripts_pipeline_cleanoption",
+      "scripts_pipeline_files",
+      "scripts_pipeline_formatexplanation",
+      "scripts_pipeline_fs",
+      "scripts_pipeline_mocksdir",
+      "scripts_pipeline_outdir",
+      "scripts_pipeline_path",
+      "scripts_pipeline_splitbilingual",
+      "scripts_test_e2e",
+      "scripts_test_e2e_fs",
+      "scripts_test_e2e_path",
+      "scripts_test_e2e_puppeteer",
+      "scripts_test_e2e_rune2etests"
+    ],
+    "3": [
+      "tsconfig",
+      "tsconfig_compileroptions",
+      "tsconfig_compileroptions_allowimportingtsextensions",
+      "tsconfig_compileroptions_isolatedmodules",
+      "tsconfig_compileroptions_jsx",
+      "tsconfig_compileroptions_lib",
+      "tsconfig_compileroptions_module",
+      "tsconfig_compileroptions_moduleresolution",
+      "tsconfig_compileroptions_noemit",
+      "tsconfig_compileroptions_nofallthroughcasesinswitch",
+      "tsconfig_compileroptions_nounusedlocals",
+      "tsconfig_compileroptions_nounusedparameters",
+      "tsconfig_compileroptions_resolvejsonmodule",
+      "tsconfig_compileroptions_skiplibcheck",
+      "tsconfig_compileroptions_strict",
+      "tsconfig_compileroptions_target",
+      "tsconfig_compileroptions_usedefineforclassfields",
+      "tsconfig_include"
+    ],
+    "4": [
+      "package_dependencies",
+      "package_dependencies_canvas_confetti",
+      "package_dependencies_dexie",
+      "package_dependencies_dexie_react_hooks",
+      "package_dependencies_framer_motion",
+      "package_dependencies_lucide_react",
+      "package_dependencies_react",
+      "package_dependencies_react_dom",
+      "package_dependencies_types_canvas_confetti",
+      "ref_canvas_confetti",
+      "ref_dexie",
+      "ref_dexie_react_hooks",
+      "ref_framer_motion",
+      "ref_react_dom",
+      "ref_types_canvas_confetti"
+    ],
+    "5": [
+      "src_components_dataintakemodal",
+      "src_components_dataintakemodal_dataintakemodal",
+      "src_components_dataintakemodal_dataintakemodalprops",
+      "src_components_dataintakemodal_tabtype",
+      "src_utils_dataintake",
+      "src_utils_dataintake_downloadtemplatefile",
+      "src_utils_dataintake_getmistakecsvtemplate",
+      "src_utils_dataintake_getmistakejsontemplate",
+      "src_utils_dataintake_getmockcsvtemplate",
+      "src_utils_dataintake_getmockjsontemplate",
+      "src_utils_dataintake_getpaperquestionscsvtemplate",
+      "src_utils_dataintake_parsecsvrows",
+      "src_utils_dataintake_parsedpasteresult",
+      "src_utils_dataintake_parsetestbookpastedtext"
+    ],
+    "6": [
+      "package_devdependencies",
+      "package_devdependencies_autoprefixer",
+      "package_devdependencies_postcss",
+      "package_devdependencies_puppeteer_core",
+      "package_devdependencies_tailwindcss",
+      "package_devdependencies_types_react_dom",
+      "package_devdependencies_vitest",
+      "ref_autoprefixer",
+      "ref_postcss",
+      "ref_puppeteer_core",
+      "ref_tailwindcss",
+      "ref_types_react_dom",
+      "ref_vitest"
+    ],
+    "7": [
+      "scripts_clean_mock",
+      "scripts_clean_mock_cleaneddata",
+      "scripts_clean_mock_cleanedquestions",
+      "scripts_clean_mock_cleanoptiontext",
+      "scripts_clean_mock_defaultin",
+      "scripts_clean_mock_formatexplanation",
+      "scripts_clean_mock_fs",
+      "scripts_clean_mock_path",
+      "scripts_clean_mock_raw",
+      "scripts_clean_mock_secstats",
+      "scripts_clean_mock_sections",
+      "scripts_clean_mock_splitbilingual"
+    ],
+    "8": [
+      "src_components_plannerview",
+      "src_components_plannerview_plannerview",
+      "src_utils_planner",
+      "src_utils_planner_calculateattemptsneeded",
+      "src_utils_planner_calculatebreakevenaccuracy",
+      "src_utils_planner_calculateexpectedscoreperattempt",
+      "src_utils_planner_calculategapanalysis",
+      "src_utils_planner_calculatetimeplan",
+      "src_utils_planner_calculatewhatifprojections",
+      "src_utils_planner_generatecurvedata",
+      "src_utils_planner_test",
+      "src_utils_planner_timeplanrecommendation"
+    ],
+    "9": [
+      "package_dependencies_recharts",
+      "ref_recharts",
+      "src_components_dashboardview",
+      "src_components_dashboardview_palette_colors",
+      "src_types_index_attempttype",
+      "src_utils_insights",
+      "src_utils_insights_focusaction",
+      "src_utils_insights_generatedinsights",
+      "src_utils_insights_generateinsights",
+      "src_utils_insights_insightcard"
+    ],
+    "10": [
+      "package_scripts",
+      "package_scripts_build",
+      "package_scripts_clean_mock",
+      "package_scripts_dev",
+      "package_scripts_extract",
+      "package_scripts_import_my_data",
+      "package_scripts_pipeline",
+      "package_scripts_preview",
+      "package_scripts_test",
+      "package_scripts_test_e2e"
+    ],
+    "11": [
+      "package",
+      "package_devdependencies_types_react",
+      "package_devdependencies_typescript",
+      "package_name",
+      "package_private",
+      "package_type",
+      "package_version",
+      "ref_types_react",
+      "ref_typescript"
+    ],
+    "12": [
+      "package_devdependencies_vite",
+      "package_devdependencies_vitejs_plugin_react",
+      "ref_vite",
+      "ref_vitejs_plugin_react",
+      "vite_config"
+    ],
+    "13": [
+      "package_devdependencies_types_node",
+      "ref_types_node"
+    ],
+    "14": [
+      "scripts_package",
+      "scripts_package_type"
+    ],
+    "15": [
+      "postcss_config"
+    ],
+    "16": [
+      "scripts_bookmarklet"
+    ],
+    "17": [
+      "tailwind_config"
+    ]
+  },
+  "cohesion": {
+    "0": 0.13178294573643412,
+    "1": 0.12660028449502134,
+    "2": 0.07226890756302522,
+    "3": 0.1111111111111111,
+    "4": 0.13333333333333333,
+    "5": 0.3076923076923077,
+    "6": 0.15384615384615385,
+    "7": 0.22727272727272727,
+    "8": 0.5,
+    "9": 0.2222222222222222,
+    "10": 0.2,
+    "11": 0.2222222222222222,
+    "12": 0.4,
+    "13": 1.0,
+    "14": 1.0,
+    "15": 1.0,
+    "16": 1.0,
+    "17": 1.0
+  },
+  "gods": [
+    {
+      "id": "src_types_index_examsettings",
+      "label": "ExamSettings",
+      "degree": 28
+    },
+    {
+      "id": "src_components_mascot_mascot",
+      "label": "Mascot()",
+      "degree": 21
+    },
+    {
+      "id": "src_types_index_mistakeentry",
+      "label": "MistakeEntry",
+      "degree": 20
+    },
+    {
+      "id": "src_types_index_mocktest",
+      "label": "MockTest",
+      "degree": 19
+    },
+    {
+      "id": "ref_react",
+      "label": "react",
+      "degree": 18
+    },
+    {
+      "id": "tsconfig_compileroptions",
+      "label": "compilerOptions",
+      "degree": 16
+    },
+    {
+      "id": "src_app_app",
+      "label": "App()",
+      "degree": 16
+    },
+    {
+      "id": "ref_lucide_react",
+      "label": "lucide-react",
+      "degree": 14
+    },
+    {
+      "id": "src_components_dataintakemodal_dataintakemodal",
+      "label": "DataIntakeModal()",
+      "degree": 11
+    },
+    {
+      "id": "src_db_db_db",
+      "label": "db",
+      "degree": 10
+    }
+  ],
+  "surprises": [
+    {
+      "source": "DataIntakeModalProps",
+      "target": "ExamSettings",
+      "source_files": [
+        "src/components/DataIntakeModal.tsx",
+        "src/types/index.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "references",
+      "why": "bridges separate communities; peripheral node `DataIntakeModalProps` unexpectedly reaches hub `ExamSettings`"
+    },
+    {
+      "source": "SettingsViewProps",
+      "target": "ExamSettings",
+      "source_files": [
+        "src/components/SettingsView.tsx",
+        "src/types/index.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "references",
+      "why": "peripheral node `SettingsViewProps` unexpectedly reaches hub `ExamSettings`"
+    },
+    {
+      "source": "DashboardView()",
+      "target": "generateInsights()",
+      "source_files": [
+        "src/components/DashboardView.tsx",
+        "src/utils/insights.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "MistakesView()",
+      "target": "exportMistakesAsCsv()",
+      "source_files": [
+        "src/components/MistakesView.tsx",
+        "src/utils/exportImport.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "exportAllDataAsJson()",
+      "target": "ensureSettings()",
+      "source_files": [
+        "src/utils/exportImport.ts",
+        "src/db/db.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    }
+  ],
+  "tokens": {
+    "input": 0,
+    "output": 0
+  }
+}
