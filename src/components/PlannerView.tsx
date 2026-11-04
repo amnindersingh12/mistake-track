@@ -3,6 +3,7 @@ import {
   ExamSettings,
   MockTest,
   MistakeEntry,
+  PaperAttempt,
   PaperTest,
   StudyTask,
   TaskPriority
@@ -15,6 +16,7 @@ import {
   calculateGapAnalysis
 } from '../utils/planner';
 import { calculateTopicMastery, TopicEvidence, TopicMasteryStatus } from '../utils/topicMastery';
+import { getTodayDateStr } from '../utils/srs';
 import {
   ResponsiveContainer,
   LineChart,
@@ -53,6 +55,7 @@ interface PlannerViewProps {
   mocks: MockTest[];
   mistakes: MistakeEntry[];
   papers?: PaperTest[];
+  paperAttempts?: PaperAttempt[];
   tasks?: StudyTask[];
   onAddTask?: (task: Omit<StudyTask, 'id' | 'createdAt'>) => void;
   onToggleTask?: (taskId: number) => void;
@@ -64,6 +67,7 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
   mocks,
   mistakes,
   papers = [],
+  paperAttempts = [],
   tasks = [],
   onAddTask,
   onToggleTask,
@@ -203,8 +207,8 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
 
   // Topic Mastery Matrix (Task 5)
   const masteryMatrix = useMemo(() => {
-    return calculateTopicMastery(settings.sections, mocks, mistakes, papers);
-  }, [settings.sections, mocks, mistakes, papers]);
+    return calculateTopicMastery(settings.sections, mocks, mistakes, papers, paperAttempts);
+  }, [settings.sections, mocks, mistakes, papers, paperAttempts]);
 
   const [masteryFilter, setMasteryFilter] = useState<TopicMasteryStatus | 'All'>('All');
   const [inspectedTopic, setInspectedTopic] = useState<TopicEvidence | null>(null);
@@ -220,7 +224,7 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
   const [newTaskTopic, setNewTaskTopic] = useState('');
   const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>('High');
   const [newTaskDuration, setNewTaskDuration] = useState(45);
-  const [newTaskDueDate, setNewTaskDueDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [newTaskDueDate, setNewTaskDueDate] = useState(() => getTodayDateStr());
 
   const handleCreateTask = (e: React.FormEvent) => {
     e.preventDefault();
@@ -249,7 +253,7 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
       topic: topicItem.topic,
       priority: 'High',
       plannedDurationMinutes: 45,
-      dueDate: new Date().toISOString().slice(0, 10),
+      dueDate: getTodayDateStr(),
       isCompleted: false
     });
   };

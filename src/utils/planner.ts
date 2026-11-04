@@ -30,9 +30,6 @@ export function calculateBreakEvenAccuracy(
 
 /**
  * Solves for the number of attempts needed to reach a target score.
- * Formula:
- * Net score = Attempts * ExpectedScorePerAttempt
- * => Attempts = ceil(TargetScore / ExpectedScorePerAttempt)
  */
 export function calculateAttemptsNeeded(input: PlannerInput): PlannerResult {
   const {
@@ -91,7 +88,77 @@ export function calculateAttemptsNeeded(input: PlannerInput): PlannerResult {
 }
 
 /**
- * Generates data points for Expected Score vs Attempts across 3 accuracy tiers.
+ * Computes the exact break-even sentence:
+ * "At your current attempt rate of X questions, you need Y% accuracy to reach the target cutoff of Z."
+ */
+export function calculateBreakEvenSentence(
+  attempts: number,
+  cutoffScore: number,
+  marksPerCorrect: number,
+  negativeMark: number
+): string {
+  if (attempts <= 0) {
+    return 'At 0 attempts, you cannot reach the cutoff score.';
+  }
+
+  const maxPossible = Number((attempts * marksPerCorrect).toFixed(2));
+  if (cutoffScore > maxPossible) {
+    return `At your current attempt rate of ${attempts} questions, even 100% accuracy yields at most ${maxPossible} marks, which cannot reach the target cutoff of ${cutoffScore}. You need to attempt at least ${Math.ceil(cutoffScore / marksPerCorrect)} questions.`;
+  }
+
+  const denom = marksPerCorrect + negativeMark;
+  if (denom <= 0) return 'Invalid marking scheme.';
+
+  // Net Score = attempts * [ p * (marksPerCorrect + negativeMark) - negativeMark ] = cutoffScore
+  const p = (cutoffScore / attempts + negativeMark) / denom;
+  const reqAcc = Number(Math.max(0, Math.min(100, p * 100)).toFixed(1));
+
+  return `At your current attempt rate of ${attempts} questions, you need ${reqAcc}% accuracy to reach the target cutoff of ${cutoffScore}.`;
+}
+
+/**
+ * Generates data points for Expected Score vs Attempts across 3 accuracy tiers (e.g. 70%, 80%, 90%).
+ */
+export function generateAccuracyTierCurves(
+  marksPerCorrect: number,
+  negativeMark: number,
+  maxQuestions: number,
+  tiers: [number, number, number] = [70, 80, 90]
+) {
+  const points: Array<{
+    attempts: number;
+    scoreTier1: number;
+    scoreTier2: number;
+    scoreTier3: number;
+  }> = [];
+
+  const step = Math.max(1, Math.round(maxQuestions / 15));
+  const attemptsSet = new Set<number>([0]);
+  for (let a = step; a <= maxQuestions; a += step) {
+    attemptsSet.add(a);
+  }
+  attemptsSet.add(maxQuestions);
+
+  const sortedAttempts = Array.from(attemptsSet).sort((a, b) => a - b);
+
+  for (const attempts of sortedAttempts) {
+    const scoreTier1 = attempts * calculateExpectedScorePerAttempt(tiers[0], marksPerCorrect, negativeMark);
+    const scoreTier2 = attempts * calculateExpectedScorePerAttempt(tiers[1], marksPerCorrect, negativeMark);
+    const scoreTier3 = attempts * calculateExpectedScorePerAttempt(tiers[2], marksPerCorrect, negativeMark);
+
+    points.push({
+      attempts,
+      scoreTier1: Number(scoreTier1.toFixed(2)),
+      scoreTier2: Number(scoreTier2.toFixed(2)),
+      scoreTier3: Number(scoreTier3.toFixed(2)),
+    });
+  }
+
+  return points;
+}
+
+/**
+ * Generates legacy curve data points for Expected Score vs Attempts across current +- 10% tiers.
  */
 export function generateCurveData(
   currentAccuracy: number,
@@ -171,7 +238,7 @@ export function calculateWhatIfProjections(
 }
 
 /**
- * Computes suggested time allocation per section based on marks earned per minute.
+ * Suggested time allocation per section based on marks earned per minute.
  */
 export interface TimePlanRecommendation {
   sectionId: string;
@@ -187,7 +254,6 @@ export function calculateTimePlan(
   historicalSectionData: Array<{ sectionId: string; netScore: number; timeMinutes: number }>,
   totalTestMinutes: number
 ): TimePlanRecommendation[] {
-  // Aggregate historical rates
   const aggregates: Record<string, { totalScore: number; totalMinutes: number }> = {};
   for (const sec of sections) {
     aggregates[sec.id] = { totalScore: 0, totalMinutes: 0 };
@@ -211,10 +277,7 @@ export function calculateTimePlan(
     };
   });
 
-  // Sort descending by marksPerMinute
   rates.sort((a, b) => b.marksPerMinute - a.marksPerMinute);
-
-  // Distribute time proportionally to default limits or rates
   const totalWeight = rates.reduce((sum, r) => sum + r.defaultTime, 0) || 1;
 
   return rates.map((r, index) => {
@@ -284,3 +347,39 @@ export function calculateGapAnalysis(
   };
 }
 
+/**
+ * Computes Target Gap Analysis comparing current score vs exam cutoff and target score.
+ */
+export function calculateTargetGap(
+  currentScore: number,
+  overallCutoff: number,
+  targetScore: number
+): {
+  cutoffGap: number;
+  targetGap: number;
+  passedCutoff: boolean;
+  passedTarget: boolean;
+  summarySentence: string;
+} {
+  const cutoffGap = Number(Math.max(0, overallCutoff - currentScore).toFixed(2));
+  const targetGap = Number(Math.max(0, targetScore - currentScore).toFixed(2));
+  const passedCutoff = currentScore >= overallCutoff;
+  const passedTarget = currentScore >= targetScore;
+
+  let summarySentence = '';
+  if (passedTarget) {
+    summarySentence = `Target achieved! Current score (${currentScore}) exceeds target of ${targetScore}.`;
+  } else if (passedCutoff) {
+    summarySentence = `Cutoff cleared (+${(currentScore - overallCutoff).toFixed(1)} marks above cutoff). You need +${targetGap} marks to reach target (${targetScore}).`;
+  } else {
+    summarySentence = `Below cutoff by ${cutoffGap} marks. Overall gap to target score (${targetScore}) is ${targetGap} marks.`;
+  }
+
+  return {
+    cutoffGap,
+    targetGap,
+    passedCutoff,
+    passedTarget,
+    summarySentence
+  };
+}
