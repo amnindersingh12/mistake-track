@@ -10,7 +10,7 @@ import { NavTab } from './Sidebar';
 import { Mascot } from './Mascot';
 import { generateInsights, FocusAction, InsightCard } from '../utils/insights';
 import { calculateTopicMastery } from '../utils/topicMastery';
-import { getTodayDateStr } from '../utils/srs';
+import { calculateStreak, getTodayDateStr } from '../utils/srs';
 import {
   Brain,
   Flame,
@@ -102,25 +102,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       (m.history || []).forEach((h) => activeDates.add(h.date));
     });
 
-    const sortedDates = Array.from(activeDates).sort().reverse();
-    if (sortedDates.length === 0) return 0;
-
-    let streak = 0;
-    const checkDate = new Date();
-    // Allow today or yesterday as latest
-    let currentCheckStr = checkDate.toISOString().slice(0, 10);
-    if (!sortedDates.includes(currentCheckStr)) {
-      checkDate.setDate(checkDate.getDate() - 1);
-      currentCheckStr = checkDate.toISOString().slice(0, 10);
-      if (!sortedDates.includes(currentCheckStr)) return 0;
-    }
-
-    while (sortedDates.includes(currentCheckStr)) {
-      streak++;
-      checkDate.setDate(checkDate.getDate() - 1);
-      currentCheckStr = checkDate.toISOString().slice(0, 10);
-    }
-    return streak;
+    return calculateStreak(Array.from(activeDates));
   }, [mocks, mistakes]);
 
   // Overall statistics
