@@ -83,7 +83,7 @@
       try {
         // Return to normal questions tab if left in Question Paper view
         const qTabBtn = document.querySelector(
-          '[ng-click*="setTab(\'questions\')"], [ng-click*="setTab(\"questions\")"], a[href="#questions"]'
+          '[ng-click*="setTab"][ng-click*="question"], a[href="#questions"]'
         );
         if (qTabBtn) {
           qTabBtn.click();
@@ -167,51 +167,60 @@
     }
 
     async tryFetchQuestionPaperScrapling() {
-      const qPaperBtn = document.querySelector(
-        '[ng-click*="setTab(\'qpaper\')"], [ng-click*="setTab(\"qpaper\")"], a[href="#questionPaper"]'
-      );
-
-      if (qPaperBtn) {
-        qPaperBtn.click();
-        await delay(400);
-      }
-
-      const qPaperContainer = document.querySelector('#questionPaper, .qpaper-view, .question-paper-body');
-      if (!qPaperContainer) {
-        return null;
-      }
-
-      const html = qPaperContainer.innerHTML;
-      if (!html || html.length < 100) return null;
-
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2500);
+        const qPaperBtn = document.querySelector(
+          '[ng-click*="setTab"][ng-click*="qpaper"], a[href="#questionPaper"]'
+        );
 
-        const resp = await fetch(SCRAPLING_ENDPOINT, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ html }),
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
+        if (qPaperBtn) {
+          qPaperBtn.click();
+          await delay(400);
+        }
 
-        if (resp.ok) {
-          const data = await resp.json();
-          if (data && Array.isArray(data.questions)) {
-            return data.questions;
+        const qPaperContainer = document.querySelector('#questionPaper, .qpaper-view, .question-paper-body');
+        if (!qPaperContainer) {
+          return null;
+        }
+
+        const html = qPaperContainer.innerHTML;
+        if (!html || html.length < 100) return null;
+
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 2500);
+
+          const resp = await fetch(SCRAPLING_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ html }),
+            signal: controller.signal
+          });
+          clearTimeout(timeoutId);
+
+          if (resp.ok) {
+            const data = await resp.json();
+            if (Array.isArray(data)) return data;
+            if (data && Array.isArray(data.questions)) {
+              return data.questions;
+            }
           }
+        } catch (err) {
+          // Scrapling service offline or unreachable; fall back to DOM palette traversal
         }
       } catch (err) {
-        // Scrapling service offline; proceed with DOM palette traversal
+        console.warn('StudyBridge: tryFetchQuestionPaperScrapling error:', err);
       } finally {
-        // Toggle back to questions view
-        const qTabBtn = document.querySelector(
-          '[ng-click*="setTab(\'questions\')"], [ng-click*="setTab(\"questions\")"], a[href="#questions"]'
-        );
-        if (qTabBtn) {
-          qTabBtn.click();
-          await delay(250);
+        try {
+          // Toggle back to questions view
+          const qTabBtn = document.querySelector(
+            '[ng-click*="setTab"][ng-click*="question"], a[href="#questions"]'
+          );
+          if (qTabBtn) {
+            qTabBtn.click();
+            await delay(250);
+          }
+        } catch (e) {
+          // Ignore toggle error
         }
       }
 

@@ -42,6 +42,21 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentTabState = null;
   let isScanning = false;
   let isPaused = false;
+  let scanPollTimer = null;
+
+  function startScanPolling() {
+    if (scanPollTimer) return;
+    scanPollTimer = setInterval(() => {
+      refreshStatus();
+    }, 600);
+  }
+
+  function stopScanPolling() {
+    if (scanPollTimer) {
+      clearInterval(scanPollTimer);
+      scanPollTimer = null;
+    }
+  }
 
   function showAlert(msg, isSuccess = true) {
     statusAlert.textContent = msg;
@@ -79,6 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function hideScanUi() {
+    stopScanPolling();
     scanProgressCard.classList.add('hidden');
     scanEntireMockBtn.disabled = !currentTabState?.isTestbook;
     isScanning = false;
@@ -170,6 +186,9 @@ document.addEventListener('DOMContentLoaded', () => {
         scanEntireMockBtn.disabled = true;
         const s = res.scanStatus;
         updateScanUi(s.current, s.total, s.section, s.percent, s.status);
+        startScanPolling();
+      } else if (isScanning && (!res.scanStatus || res.scanStatus.status === 'idle' || res.scanStatus.status === 'completed')) {
+        hideScanUi();
       }
     });
   }
@@ -180,9 +199,11 @@ document.addEventListener('DOMContentLoaded', () => {
     isScanning = true;
     scanEntireMockBtn.disabled = true;
     updateScanUi(0, 130, 'Starting scan...', 0, 'running');
+    startScanPolling();
 
     chrome.runtime.sendMessage({ type: 'SCAN_FULL_MOCK' }, (res) => {
       if (chrome.runtime.lastError || !res || !res.success) {
+        stopScanPolling();
         hideScanUi();
         showAlert(res?.error || chrome.runtime.lastError?.message || 'Failed to start full mock scan.', false);
       }
@@ -210,6 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Handle Cancel Click
   scanCancelBtn.addEventListener('click', () => {
+    stopScanPolling();
     chrome.runtime.sendMessage({ type: 'SCAN_CANCEL' }, () => {
       hideScanUi();
       showAlert('Full Mock Scan was cancelled.', false);
