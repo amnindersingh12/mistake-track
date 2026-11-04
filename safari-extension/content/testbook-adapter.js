@@ -162,7 +162,10 @@
     }
 
     if (sections.length === 0) {
-      throw new Error('No section performance rows found in summary table.');
+      throw new Error(
+        '[Testbook Markup Changed] No section performance rows found in summary table. ' +
+        'Update "summaryRows" in src/utils/testbookAdapter.ts.'
+      );
     }
 
     const totalQuestions = sections.reduce((s, x) => s + x.questionCount, 0);
@@ -272,7 +275,10 @@
     if (qDescEl && isElementVisible(qDescEl)) {
       questionText = cleanText(qDescEl.textContent);
     } else {
-      throw new Error('Visible question statement text could not be located.');
+      throw new Error(
+        '[Testbook Markup Changed] Visible question statement text could not be located. ' +
+        'Update "questionText" in src/utils/testbookAdapter.ts.'
+      );
     }
 
     const options = [];

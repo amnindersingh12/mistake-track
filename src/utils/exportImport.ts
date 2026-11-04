@@ -224,6 +224,48 @@ async function mergeByStableId<T extends { id?: number | string }>(
   }
 }
 
+async function mergeMocks(rows: MockTest[]): Promise<void> {
+  if (rows.length === 0) return;
+  const existing = await db.mocks.toArray();
+  const existingIds = new Set(existing.map((m) => m.id).filter((id) => id !== undefined));
+  const existingKeys = new Set(
+    existing.map((m) => `${m.name.trim().toLowerCase()}::${m.date}::${m.attemptType || 'mock'}`)
+  );
+
+  const additions = rows.filter((m) => {
+    if (m.id !== undefined && existingIds.has(m.id)) return false;
+    const key = `${m.name.trim().toLowerCase()}::${m.date}::${m.attemptType || 'mock'}`;
+    if (existingKeys.has(key)) return false;
+    existingKeys.add(key);
+    return true;
+  });
+
+  if (additions.length > 0) {
+    await db.mocks.bulkAdd(additions);
+  }
+}
+
+async function mergeMistakes(rows: MistakeEntry[]): Promise<void> {
+  if (rows.length === 0) return;
+  const existing = await db.mistakes.toArray();
+  const existingIds = new Set(existing.map((m) => m.id).filter((id) => id !== undefined));
+  const existingKeys = new Set(
+    existing.map((m) => `${m.questionText.trim().toLowerCase()}::${m.questionNumber}::${m.mockName || m.paperId || 'unlinked'}`)
+  );
+
+  const additions = rows.filter((m) => {
+    if (m.id !== undefined && existingIds.has(m.id)) return false;
+    const key = `${m.questionText.trim().toLowerCase()}::${m.questionNumber}::${m.mockName || m.paperId || 'unlinked'}`;
+    if (existingKeys.has(key)) return false;
+    existingKeys.add(key);
+    return true;
+  });
+
+  if (additions.length > 0) {
+    await db.mistakes.bulkAdd(additions);
+  }
+}
+
 /**
  * Applies a validated backup in a single atomic Dexie transaction across all tables.
  * Any error triggers full rollback, preserving original data intact.
@@ -269,8 +311,8 @@ export async function applyBackup(
     } else {
       await db.settings.put(payload.settings);
       await mergeByStableId(db.profiles, payload.profiles);
-      await mergeByStableId(db.mocks, payload.mocks);
-      await mergeByStableId(db.mistakes, payload.mistakes);
+      await mergeMocks(payload.mocks);
+      await mergeMistakes(payload.mistakes);
       await mergeByStableId(db.papers, payload.papers);
       await mergeByStableId(db.paperAttempts, payload.paperAttempts);
       await mergeByStableId(db.images as Table<any, any>, payload.images);

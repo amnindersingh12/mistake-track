@@ -286,5 +286,54 @@ describe('Export / Import & Data Integrity', () => {
       expect(allMocks.some((m) => m.name === 'Existing Mock 10')).toBe(true);
       expect(allMocks.some((m) => m.name === 'Mock Test 01')).toBe(true);
     });
+
+    it('deduplicates mocks and mistakes by natural key in merge mode when IDs differ or are omitted', async () => {
+      // Existing mock in DB with id 99
+      await db.mocks.add({
+        ...validSampleBackup.mocks[0],
+        id: 99,
+        name: 'Mock Test 01',
+        date: '2026-11-01'
+      });
+      // Existing mistake in DB with id 77
+      await db.mistakes.add({
+        ...validSampleBackup.mistakes[0],
+        id: 77,
+        questionText: 'What is 5 + 7?',
+        questionNumber: 1,
+        mockName: 'Mock Test 01'
+      });
+
+      // Incoming payload has no id on mock, and duplicate natural key
+      const duplicatePayload = {
+        ...validSampleBackup,
+        mocks: [
+          {
+            ...validSampleBackup.mocks[0],
+            id: undefined,
+            name: 'Mock Test 01',
+            date: '2026-11-01'
+          }
+        ],
+        mistakes: [
+          {
+            ...validSampleBackup.mistakes[0],
+            id: undefined,
+            questionText: 'What is 5 + 7?',
+            questionNumber: 1,
+            mockName: 'Mock Test 01'
+          }
+        ]
+      };
+
+      await importDataFromJson(JSON.stringify(duplicatePayload), 'merge', false);
+
+      const mocks = await db.mocks.toArray();
+      const mistakes = await db.mistakes.toArray();
+
+      // Should still be exactly 1 mock and 1 mistake, no duplicate rows created
+      expect(mocks.length).toBe(1);
+      expect(mistakes.length).toBe(1);
+    });
   });
 });

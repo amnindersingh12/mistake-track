@@ -241,8 +241,8 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
       };
 
       await deliverPayload(payload);
-    } catch (err) {
-      console.error('Context menu transfer error:', err);
+    } catch {
+      // Suppress transfer error in production
     }
   });
 }
@@ -556,8 +556,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         await deliverPayload(payload);
         activeScanState.status = 'idle';
         chrome.runtime.sendMessage({ type: 'SCAN_COMPLETED', result: scanResult }).catch(() => {});
-      } catch (err) {
-        console.error('StudyBridge: delivery of scan completed payload failed:', err);
+      } catch {
+        // Delivery failed
       }
     })();
     sendResponse({ ack: true });

@@ -33,7 +33,7 @@ export const PaperExamModal: React.FC<PaperExamModalProps> = ({
   if (!isOpen) return null;
 
   const questions = paper.questions || [];
-  const totalSeconds = (paper.totalTimeMinutes || 60) * 60;
+  const totalSeconds = (paper.totalTimeMinutes !== undefined ? paper.totalTimeMinutes : 60) * 60;
   const [secondsRemaining, setSecondsRemaining] = useState(totalSeconds);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
 
@@ -213,7 +213,7 @@ export const PaperExamModal: React.FC<PaperExamModalProps> = ({
             myAnswer: q.options[selectedOption] || `Option ${selectedOption + 1}`,
             correctAnswer: q.options[q.correctOptionIndex] || `Option ${q.correctOptionIndex + 1}`,
             resultType: 'Wrong',
-            errorTypes: ['Concept gap'],
+            errorTypes: ['Unclassified'],
             timeSpentSeconds: Math.round(timeSpentSeconds / Math.max(1, questions.length)),
             idealTimeSeconds: 40,
             whatWentWrong: 'Missed in timed PYQ test attempt.',

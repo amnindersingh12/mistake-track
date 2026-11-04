@@ -8,9 +8,15 @@ EXT_NAME="StudyBridge Extension.appex"
 APP_DIR="$BUILD_DIR/$APP_NAME"
 EXT_DIR="$APP_DIR/Contents/PlugIns/$EXT_NAME"
 SDK_PATH="$(xcrun --show-sdk-path)"
+HOST_ARCH="$(uname -m)"
+if [ "$HOST_ARCH" = "x86_64" ]; then
+  SWIFT_TARGET="x86_64-apple-macos13.0"
+else
+  SWIFT_TARGET="arm64-apple-macos13.0"
+fi
 
 echo "=== Building StudyBridge Safari Web Extension ==="
-echo "Target: $BUILD_DIR"
+echo "Target: $BUILD_DIR (Architecture: $HOST_ARCH -> $SWIFT_TARGET)"
 
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS"
@@ -22,7 +28,7 @@ mkdir -p "$EXT_DIR/Contents/Resources"
 echo "[1/4] Compiling Safari Extension binary..."
 swiftc \
   -sdk "$SDK_PATH" \
-  -target arm64-apple-macos13.0 \
+  -target "$SWIFT_TARGET" \
   -O \
   -framework SafariServices \
   -framework Foundation \
@@ -34,7 +40,7 @@ swiftc \
 echo "[2/4] Compiling Container App binary..."
 swiftc \
   -sdk "$SDK_PATH" \
-  -target arm64-apple-macos13.0 \
+  -target "$SWIFT_TARGET" \
   -O \
   -parse-as-library \
   -framework Cocoa \

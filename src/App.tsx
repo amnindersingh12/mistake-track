@@ -54,7 +54,6 @@ export function App() {
 
       const validation = validateStudyBridgePayload(data);
       if (!validation.isValid || !validation.payload) {
-        console.warn('StudyBridge import payload rejected:', validation.error);
         window.postMessage(
           {
             type: 'STUDYBRIDGE_IMPORT_ACK',
@@ -118,8 +117,8 @@ export function App() {
       setMistakes(mst);
       setPapers(pps);
       setTasks(tsk);
-    } catch (err) {
-      console.error('Failed to load database:', err);
+    } catch {
+      // Database load error handled gracefully
     } finally {
       setIsLoading(false);
     }

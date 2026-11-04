@@ -50,8 +50,11 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
   const [filterErrorType, setFilterErrorType] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterResultType, setFilterResultType] = useState<string>('all');
-  const [filterMockId, setFilterMockId] = useState<string>(initialMockFilter ? String(initialMockFilter) : 'all');
+  const [filterSource, setFilterSource] = useState<string>(initialMockFilter ? `mock:${initialMockFilter}` : 'all');
+  const [filterDateRange, setFilterDateRange] = useState<'all' | 'today' | '7days' | '30days'>('all');
+  const [filterTag, setFilterTag] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'date-desc' | 'date-asc' | 'time-desc' | 'diff'>('date-desc');
+  const [tagsStr, setTagsStr] = useState('');
 
   // Preview Image Modal
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -166,7 +169,7 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
     setMyAnswer('');
     setCorrectAnswer('');
     setResultType('Wrong');
-    setSelectedErrorTypes(['Concept gap']);
+    setSelectedErrorTypes([]);
     setTimeSpentSeconds(60);
     setIdealTimeSeconds(35);
     setWhatWentWrong('');
@@ -175,6 +178,7 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
     setRuleToRemember('');
     setDifficulty('Medium');
     setStatus('New');
+    setTagsStr('');
     setIsFullModalOpen(true);
   };
 
@@ -191,7 +195,7 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
     setMyAnswer(m.myAnswer);
     setCorrectAnswer(m.correctAnswer);
     setResultType(m.resultType);
-    setSelectedErrorTypes(m.errorTypes);
+    setSelectedErrorTypes(m.errorTypes || []);
     setTimeSpentSeconds(m.timeSpentSeconds);
     setIdealTimeSeconds(m.idealTimeSeconds);
     setWhatWentWrong(m.whatWentWrong);
@@ -200,6 +204,7 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
     setRuleToRemember(m.ruleToRemember);
     setDifficulty(m.difficulty);
     setStatus(m.status);
+    setTagsStr((m.tags || []).join(', '));
     setIsFullModalOpen(true);
   };
 
@@ -213,6 +218,7 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
     const todayStr = getTodayDateStr();
     const existing = editingMistakeId ? mistakes.find((m) => m.id === editingMistakeId) : undefined;
     const preserveReview = Boolean(existing && !resetReviewSchedule);
+    const parsedTags = tagsStr.split(',').map((t) => t.trim()).filter(Boolean);
 
     const payload: Omit<MistakeEntry, 'id'> = {
       mockId: mock?.id,
@@ -238,7 +244,7 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
       betterApproach: betterApproach.trim() || 'Review core approach.',
       ruleToRemember: ruleToRemember.trim() || 'Carefully re-read problem statements.',
       difficulty,
-      tags: ['user-logged'],
+      tags: parsedTags.length > 0 ? parsedTags : ['user-logged'],
       status: preserveReview ? existing!.status : status,
       interval: preserveReview ? existing!.interval : status === 'Mastered' ? 30 : 1,
       consecutiveCorrect: preserveReview ? existing!.consecutiveCorrect : status === 'Mastered' ? 3 : 0,
@@ -261,7 +267,7 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
   // Quick Add State
   const [quickSectionId, setQuickSectionId] = useState(settings.sections[0]?.id || 'quant');
   const [quickTopic, setQuickTopic] = useState(settings.sections[0]?.topics[0] || 'Percentage');
-  const [quickErrorTypes, setQuickErrorTypes] = useState<string[]>(['Calculation mistake']);
+  const [quickErrorTypes, setQuickErrorTypes] = useState<string[]>([]);
   const [quickRule, setQuickRule] = useState('');
   const [quickQNo, setQuickQNo] = useState<number>(mistakes.length + 1);
   const [quickResultType, setQuickResultType] = useState<ResultType>('Wrong');
@@ -313,34 +319,82 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
     }
   };
 
-  const filteredMistakes = mistakes.filter((m) => {
-    if (filterSection !== 'all' && m.sectionId !== filterSection) return false;
-    if (filterTopic !== 'all' && m.topic !== filterTopic) return false;
-    if (filterErrorType !== 'all' && !m.errorTypes.includes(filterErrorType)) return false;
-    if (filterStatus !== 'all' && m.status !== filterStatus) return false;
-    if (filterResultType !== 'all' && m.resultType !== filterResultType) return false;
-    if (filterMockId !== 'all' && String(m.mockId) !== filterMockId) return false;
+  const allTags = Array.from(new Set(mistakes.flatMap((m) => m.tags || []))).filter(Boolean);
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchText = (
-        m.questionText +
-        ' ' +
-        m.ruleToRemember +
-        ' ' +
-        m.whatWentWrong +
-        ' ' +
-        m.topic +
-        ' ' +
-        m.mockName +
-        ' ' +
-        (m.subtopic || '')
-      ).toLowerCase();
-      if (!matchText.includes(q)) return false;
-    }
+  const filteredMistakes = mistakes
+    .filter((m) => {
+      if (filterSection !== 'all' && m.sectionId !== filterSection) return false;
+      if (filterTopic !== 'all' && m.topic !== filterTopic) return false;
+      if (filterErrorType !== 'all' && !m.errorTypes.includes(filterErrorType)) return false;
+      if (filterStatus !== 'all' && m.status !== filterStatus) return false;
+      if (filterResultType !== 'all' && m.resultType !== filterResultType) return false;
+      if (filterSource !== 'all') {
+        if (filterSource === 'unlinked') {
+          if (m.mockId || m.paperId) return false;
+        } else if (filterSource.startsWith('mock:')) {
+          const id = Number(filterSource.replace('mock:', ''));
+          if (m.mockId !== id) return false;
+        } else if (filterSource.startsWith('paper:')) {
+          const id = Number(filterSource.replace('paper:', ''));
+          if (m.paperId !== id) return false;
+        }
+      }
+      if (filterTag !== 'all' && !(m.tags || []).includes(filterTag)) return false;
+      if (filterDateRange !== 'all') {
+        const today = getTodayDateStr();
+        if (filterDateRange === 'today' && m.createdAt !== today) return false;
+        if (filterDateRange === '7days') {
+          const d = new Date();
+          d.setDate(d.getDate() - 7);
+          const cut = d.toISOString().split('T')[0];
+          if (m.createdAt < cut) return false;
+        }
+        if (filterDateRange === '30days') {
+          const d = new Date();
+          d.setDate(d.getDate() - 30);
+          const cut = d.toISOString().split('T')[0];
+          if (m.createdAt < cut) return false;
+        }
+      }
 
-    return true;
-  });
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchText = (
+          m.questionText +
+          ' ' +
+          m.ruleToRemember +
+          ' ' +
+          m.whatWentWrong +
+          ' ' +
+          m.topic +
+          ' ' +
+          m.mockName +
+          ' ' +
+          (m.subtopic || '') +
+          ' ' +
+          (m.tags || []).join(' ')
+        ).toLowerCase();
+        if (!matchText.includes(q)) return false;
+      }
+
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'date-desc') {
+        return (b.createdAt || '').localeCompare(a.createdAt || '') || (b.id || 0) - (a.id || 0);
+      }
+      if (sortBy === 'date-asc') {
+        return (a.createdAt || '').localeCompare(b.createdAt || '') || (a.id || 0) - (b.id || 0);
+      }
+      if (sortBy === 'time-desc') {
+        return (b.timeSpentSeconds || 0) - (a.timeSpentSeconds || 0);
+      }
+      if (sortBy === 'diff') {
+        const rank: Record<string, number> = { Hard: 3, Medium: 2, Easy: 1 };
+        return (rank[b.difficulty] || 2) - (rank[a.difficulty] || 2);
+      }
+      return 0;
+    });
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-12">
@@ -401,6 +455,7 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
 
           <div className="flex flex-wrap gap-2">
             <select
+              aria-label="Filter by section"
               value={filterSection}
               onChange={(e) => {
                 setFilterSection(e.target.value);
@@ -417,6 +472,44 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
             </select>
 
             <select
+              aria-label="Filter by topic"
+              value={filterTopic}
+              onChange={(e) => setFilterTopic(e.target.value)}
+              className="text-xs px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-bold"
+            >
+              <option value="all">All Topics</option>
+              {Array.from(new Set(settings.sections.flatMap((s) => s.topics))).map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+
+            <select
+              aria-label="Filter by error type"
+              value={filterErrorType}
+              onChange={(e) => setFilterErrorType(e.target.value)}
+              className="text-xs px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-bold"
+            >
+              <option value="all">All Error Types</option>
+              {settings.errorTypes.map((et) => (
+                <option key={et} value={et}>{et}</option>
+              ))}
+              <option value="Unclassified">Unclassified</option>
+            </select>
+
+            <select
+              aria-label="Filter by result type"
+              value={filterResultType}
+              onChange={(e) => setFilterResultType(e.target.value)}
+              className="text-xs px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-bold"
+            >
+              <option value="all">All Results</option>
+              <option value="Wrong">Wrong</option>
+              <option value="Unattempted">Unattempted</option>
+              <option value="Marked for Review">Marked for Review</option>
+            </select>
+
+            <select
+              aria-label="Filter by status"
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
               className="text-xs px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-bold"
@@ -425,6 +518,60 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
               <option value="New">New</option>
               <option value="Reviewing">Reviewing</option>
               <option value="Mastered">Mastered (Defeated)</option>
+            </select>
+
+            <select
+              aria-label="Filter by source"
+              value={filterSource}
+              onChange={(e) => setFilterSource(e.target.value)}
+              className="text-xs px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-bold"
+            >
+              <option value="all">All Sources</option>
+              <option value="unlinked">External / Unlinked</option>
+              {mocks.map((mk) => (
+                <option key={`m-${mk.id}`} value={`mock:${mk.id}`}>Mock: {mk.name}</option>
+              ))}
+              {papers.map((p) => (
+                <option key={`p-${p.id}`} value={`paper:${p.id}`}>Paper: {p.examName} ({p.year})</option>
+              ))}
+            </select>
+
+            <select
+              aria-label="Filter by date range"
+              value={filterDateRange}
+              onChange={(e) => setFilterDateRange(e.target.value as any)}
+              className="text-xs px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-bold"
+            >
+              <option value="all">All Dates</option>
+              <option value="today">Today</option>
+              <option value="7days">Last 7 Days</option>
+              <option value="30days">Last 30 Days</option>
+            </select>
+
+            {allTags.length > 0 && (
+              <select
+                aria-label="Filter by tag"
+                value={filterTag}
+                onChange={(e) => setFilterTag(e.target.value)}
+                className="text-xs px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-bold"
+              >
+                <option value="all">All Tags</option>
+                {allTags.map((tag) => (
+                  <option key={tag} value={tag}>#{tag}</option>
+                ))}
+              </select>
+            )}
+
+            <select
+              aria-label="Sort mistakes"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+              className="text-xs px-2.5 py-1.5 rounded-xl bg-[var(--peach)]/30 border-2 border-[var(--ink-border)] font-bold text-[var(--ink)] dark:text-[var(--text-main)]"
+            >
+              <option value="date-desc">Newest First</option>
+              <option value="date-asc">Oldest First</option>
+              <option value="time-desc">Time Spent (High to Low)</option>
+              <option value="diff">Difficulty (Hard to Easy)</option>
             </select>
           </div>
         </div>
@@ -495,6 +642,7 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
                     onClick={() => openEdit(m)}
                     className="p-1.5 rounded-lg border border-[var(--ink-border)] bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text-main)]"
                     title="Edit Mistake"
+                    aria-label="Edit Mistake"
                   >
                     <Edit3 className="w-3.5 h-3.5" />
                   </button>
@@ -502,6 +650,7 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
                     onClick={() => m.id && handleDelete(m.id)}
                     className="p-1.5 rounded-lg border border-[var(--ink-border)] bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-rose-600"
                     title="Delete Mistake"
+                    aria-label="Delete Mistake"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -693,7 +842,7 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
                 </select>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <div>
                   <label className="block font-bold mb-1">Section</label>
                   <select
@@ -719,13 +868,119 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
                   </select>
                 </div>
                 <div>
+                  <label className="block font-bold mb-1">Subtopic (Optional)</label>
+                  <input
+                    type="text"
+                    aria-label="Subtopic"
+                    value={subtopic}
+                    onChange={(e) => setSubtopic(e.target.value)}
+                    placeholder="e.g. Boats & Streams"
+                    className="w-full p-2 rounded-lg bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold"
+                  />
+                </div>
+                <div>
                   <label className="block font-bold mb-1">Question Number</label>
                   <input
                     type="number"
+                    aria-label="Question Number"
                     value={questionNumber}
                     onChange={(e) => setQuestionNumber(Number(e.target.value) || 1)}
                     className="w-full p-2 rounded-lg bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold"
                   />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-bold mb-1">Result Type</label>
+                  <select
+                    aria-label="Result Type"
+                    value={resultType}
+                    onChange={(e) => setResultType(e.target.value as ResultType)}
+                    className="w-full p-2 rounded-lg bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold"
+                  >
+                    <option value="Wrong">Wrong</option>
+                    <option value="Unattempted">Unattempted</option>
+                    <option value="Marked for Review">Marked for Review</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold mb-1">Difficulty</label>
+                  <select
+                    aria-label="Difficulty"
+                    value={difficulty}
+                    onChange={(e) => setDifficulty(e.target.value as Difficulty)}
+                    className="w-full p-2 rounded-lg bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold"
+                  >
+                    <option value="Easy">Easy</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Hard">Hard</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold mb-1">Status</label>
+                  <select
+                    aria-label="Status"
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value as MistakeStatus)}
+                    className="w-full p-2 rounded-lg bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold"
+                  >
+                    <option value="New">New</option>
+                    <option value="Reviewing">Reviewing</option>
+                    <option value="Mastered">Mastered (Defeated)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold mb-1">Time Spent (Seconds)</label>
+                  <input
+                    type="number"
+                    aria-label="Time Spent"
+                    value={timeSpentSeconds}
+                    onChange={(e) => setTimeSpentSeconds(Number(e.target.value) || 0)}
+                    className="w-full p-2 rounded-lg bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold mb-1">Ideal Time (Seconds)</label>
+                  <input
+                    type="number"
+                    aria-label="Ideal Time"
+                    value={idealTimeSeconds}
+                    onChange={(e) => setIdealTimeSeconds(Number(e.target.value) || 0)}
+                    className="w-full p-2 rounded-lg bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold mb-1">
+                  Root-Cause Error Types ({selectedErrorTypes.length > 0 ? selectedErrorTypes.join(', ') : 'Unclassified'})
+                </label>
+                <div className="flex flex-wrap gap-2 p-2.5 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)]">
+                  {settings.errorTypes.map((et) => {
+                    const isChecked = selectedErrorTypes.includes(et);
+                    return (
+                      <button
+                        type="button"
+                        key={et}
+                        onClick={() => {
+                          setSelectedErrorTypes((prev) =>
+                            isChecked ? prev.filter((t) => t !== et) : [...prev, et]
+                          );
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${
+                          isChecked
+                            ? 'bg-[var(--sakura)] text-[var(--ink)] border-[var(--ink-border)] shadow-sm'
+                            : 'bg-[var(--bg-panel)] text-[var(--text-muted)] border-[var(--ink-border)]/50 hover:border-[var(--ink-border)]'
+                        }`}
+                      >
+                        {isChecked ? '✓ ' : '+ '}{et}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -804,6 +1059,17 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
                     placeholder="e.g. Speed in km/h must be converted to m/s (x 5/18) before distance equations."
                     className="w-full p-2.5 rounded-lg bg-[var(--peach)]/30 border-2 border-[var(--ink-border)] font-bold text-[var(--ink)] dark:text-[var(--text-main)]"
                     required
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold mb-1">Tags (Comma-separated)</label>
+                  <input
+                    type="text"
+                    aria-label="Tags"
+                    value={tagsStr}
+                    onChange={(e) => setTagsStr(e.target.value)}
+                    placeholder="e.g. speed-time, algebra, silly-mistake"
+                    className="w-full p-2 rounded-lg bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-medium"
                   />
                 </div>
               </div>

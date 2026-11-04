@@ -706,24 +706,92 @@ export const MocksView: React.FC<MocksViewProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--ink-border)]/40 bg-[var(--bg-surface)]">
-                  <tr>
-                    <td className="p-3 font-bold">Total Net Score</td>
-                    <td className="p-3 font-bold">{mockA.totalNetScore}</td>
-                    <td className="p-3 font-bold">{mockB.totalNetScore}</td>
-                    <td className="p-3 font-bold font-mono">
+                  <tr className="bg-[var(--bg-panel)] font-bold">
+                    <td className="p-3">Total Net Score</td>
+                    <td className="p-3">{mockA.totalNetScore}</td>
+                    <td className="p-3">{mockB.totalNetScore}</td>
+                    <td className={`p-3 font-mono ${mockB.totalNetScore - mockA.totalNetScore >= 0 ? 'text-[var(--mint)]' : 'text-rose-500'}`}>
                       {mockB.totalNetScore - mockA.totalNetScore >= 0 ? '+' : ''}
                       {(mockB.totalNetScore - mockA.totalNetScore).toFixed(2)} pts
                     </td>
                   </tr>
-                  <tr>
-                    <td className="p-3 font-bold">Accuracy</td>
+                  <tr className="bg-[var(--bg-panel)] font-bold">
+                    <td className="p-3">Overall Accuracy</td>
                     <td className="p-3">{mockA.overallAccuracy}%</td>
                     <td className="p-3">{mockB.overallAccuracy}%</td>
-                    <td className="p-3 font-bold font-mono">
+                    <td className={`p-3 font-mono ${mockB.overallAccuracy - mockA.overallAccuracy >= 0 ? 'text-[var(--mint)]' : 'text-rose-500'}`}>
                       {mockB.overallAccuracy - mockA.overallAccuracy >= 0 ? '+' : ''}
                       {(mockB.overallAccuracy - mockA.overallAccuracy).toFixed(1)}%
                     </td>
                   </tr>
+                  <tr className="bg-[var(--bg-panel)] font-bold">
+                    <td className="p-3">Total Time Spent</td>
+                    <td className="p-3">{Math.round((mockA.totalTimeSpentSeconds || 0) / 60)}m</td>
+                    <td className="p-3">{Math.round((mockB.totalTimeSpentSeconds || 0) / 60)}m</td>
+                    <td className="p-3 font-mono">
+                      {Math.round(((mockB.totalTimeSpentSeconds || 0) - (mockA.totalTimeSpentSeconds || 0)) / 60) >= 0 ? '+' : ''}
+                      {Math.round(((mockB.totalTimeSpentSeconds || 0) - (mockA.totalTimeSpentSeconds || 0)) / 60)}m
+                    </td>
+                  </tr>
+
+                  {/* Sectional Deltas */}
+                  {Array.from(
+                    new Set([
+                      ...(mockA.sections || []).map((s) => s.sectionId),
+                      ...(mockB.sections || []).map((s) => s.sectionId)
+                    ])
+                  ).map((secId) => {
+                    const secA = mockA.sections?.find((s) => s.sectionId === secId) || {
+                      sectionName: secId,
+                      netScore: 0,
+                      accuracy: 0,
+                      timeSpentSeconds: 0
+                    };
+                    const secB = mockB.sections?.find((s) => s.sectionId === secId) || {
+                      sectionName: secId,
+                      netScore: 0,
+                      accuracy: 0,
+                      timeSpentSeconds: 0
+                    };
+                    const name = secB.sectionName || secA.sectionName || secId;
+                    const scoreDiff = Number((secB.netScore - secA.netScore).toFixed(2));
+                    const accDiff = Number((secB.accuracy - secA.accuracy).toFixed(1));
+                    const timeDiff = Math.round(((secB.timeSpentSeconds || 0) - (secA.timeSpentSeconds || 0)) / 60);
+
+                    return (
+                      <React.Fragment key={secId}>
+                        <tr className="bg-[var(--surface-tag)]/30 font-bold border-t-2 border-[var(--ink-border)]/60">
+                          <td colSpan={4} className="p-2.5 text-[var(--ink)] dark:text-[var(--text-main)] font-display">
+                            📌 Section: {name}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="p-2.5 pl-6 text-[var(--text-muted)]">• Net Score</td>
+                          <td className="p-2.5">{secA.netScore}</td>
+                          <td className="p-2.5">{secB.netScore}</td>
+                          <td className={`p-2.5 font-mono font-bold ${scoreDiff >= 0 ? 'text-[var(--mint)]' : 'text-rose-500'}`}>
+                            {scoreDiff >= 0 ? '+' : ''}{scoreDiff} pts
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="p-2.5 pl-6 text-[var(--text-muted)]">• Accuracy</td>
+                          <td className="p-2.5">{secA.accuracy}%</td>
+                          <td className="p-2.5">{secB.accuracy}%</td>
+                          <td className={`p-2.5 font-mono font-bold ${accDiff >= 0 ? 'text-[var(--mint)]' : 'text-rose-500'}`}>
+                            {accDiff >= 0 ? '+' : ''}{accDiff}%
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="p-2.5 pl-6 text-[var(--text-muted)]">• Time Spent</td>
+                          <td className="p-2.5">{Math.round((secA.timeSpentSeconds || 0) / 60)}m</td>
+                          <td className="p-2.5">{Math.round((secB.timeSpentSeconds || 0) / 60)}m</td>
+                          <td className="p-2.5 font-mono font-bold">
+                            {timeDiff >= 0 ? '+' : ''}{timeDiff}m
+                          </td>
+                        </tr>
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

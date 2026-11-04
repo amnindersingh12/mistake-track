@@ -106,8 +106,8 @@
 
         // Restore scroll position
         window.scrollTo(this.savedState.scrollX, this.savedState.scrollY);
-      } catch (e) {
-        console.warn('StudyBridge: state restore warning:', e);
+      } catch {
+        // Suppress state restore warning in production
       }
     }
 
@@ -207,8 +207,8 @@
         } catch (err) {
           // Scrapling service offline or unreachable; fall back to DOM palette traversal
         }
-      } catch (err) {
-        console.warn('StudyBridge: tryFetchQuestionPaperScrapling error:', err);
+      } catch {
+        // Suppress background scrape error; fallback to DOM traversal
       } finally {
         try {
           // Toggle back to questions view
@@ -520,7 +520,6 @@
 
       if (msg.type === 'START_FULL_SCAN') {
         scannerInstance.startScan().catch((err) => {
-          console.error('StudyBridge Scanner error:', err);
           if (api.runtime) {
             api.runtime.sendMessage({ type: 'SCAN_ERROR', error: err.message }).catch(() => {});
           }

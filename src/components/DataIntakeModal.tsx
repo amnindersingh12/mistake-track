@@ -288,7 +288,7 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
       myAnswer: m.myAnswer,
       correctAnswer: m.correctAnswer,
       resultType: m.resultType,
-      errorTypes: m.errorTypes.length ? m.errorTypes : ['Concept gap'],
+      errorTypes: m.errorTypes.length ? m.errorTypes : ['Unclassified'],
       timeSpentSeconds: m.timeSpentSeconds,
       idealTimeSeconds: m.idealTimeSeconds,
       whatWentWrong: m.whatWentWrong,
@@ -505,7 +505,6 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
       onSuccess(`Successfully saved "${mockRecord.name}" with ${selectedQuestions.length} mistake(s)!`);
       onClose();
     } catch (err: any) {
-      console.error('Failed to save fullscan mock:', err);
       alert(`Save failed: ${err?.message || 'Database error'}`);
     } finally {
       setIsSavingFullScan(false);

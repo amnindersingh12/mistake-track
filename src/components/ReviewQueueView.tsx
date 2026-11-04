@@ -53,8 +53,9 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
     return m.status !== 'Mastered' && m.nextReviewDate <= todayStr;
   });
 
-  // Compute Retry Mode items
+  // Compute Retry Mode items (excluding Mastered cards)
   const retryQueue = mistakes.filter((m) => {
+    if (m.status === 'Mastered') return false;
     if (!retryFilterValue) return false;
     if (retryFilterType === 'topic') return m.topic === retryFilterValue;
     if (retryFilterType === 'errorType') return m.errorTypes.includes(retryFilterValue);
