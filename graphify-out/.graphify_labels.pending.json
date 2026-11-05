@@ -3,13 +3,18 @@
   "5": "test_visual_qa.cjs",
   "11": "package.json",
   "13": "ref_path",
-  "16": "vitest",
+  "16": "MocksView.tsx",
   "17": "exportImport.ts",
   "30": "@testing-library/react",
   "32": "ScreenshotInput.tsx",
   "33": "puppeteer-core",
-  "34": "QuestionRenderer.tsx",
-  "35": "@types/katex@^0.16.8",
+  "34": "CheatSheetView.tsx",
+  "35": "MistakeEntry",
   "42": "bookmarklet.js",
-  "43": "tailwind.config.js"
+  "43": "tailwind.config.js",
+  "44": "react",
+  "45": "ExamSettings",
+  "46": "getTodayDateStr",
+  "47": "package.json",
+  "48": "@testing-library/user-event@^14.6.8"
 }
