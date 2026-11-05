@@ -59,7 +59,10 @@ const QuickNoteModal: React.FC<QuickNoteModalProps> = ({ isOpen, onClose, onSave
         topicId: 'general',
         title: title.trim(),
         content: content.trim(),
-        formulae: [],
+        tags: ['quick-capture'],
+        linkedMistakeIds: [],
+        linkedPyqIds: [],
+        linkedPatternIds: [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
@@ -147,7 +150,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const loadHomeData = async () => {
     try {
       // 1. Profile
-      const defaultProf = await db.profiles.filter(p => p.isDefault).first();
+      const defaultProf = await db.profiles.filter(p => Boolean(p.isDefault)).first();
       setProfile(defaultProf || null);
 
       // 2. XP State
@@ -234,7 +237,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   // Single Highest Leverage Suggestion (Next Best Action)
   const nextBestAction = useMemo(() => {
     const today = getLocalDateStr();
-    const dueReviews = mistakes.filter(m => m.nextReviewDate && m.nextReviewDate <= today && m.status !== 'mastered');
+    const dueReviews = mistakes.filter(m => m.nextReviewDate && m.nextReviewDate <= today && m.status !== 'Mastered');
 
     if (dueReviews.length >= 5) {
       return {
