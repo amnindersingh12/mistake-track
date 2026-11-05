@@ -79,10 +79,10 @@
     "semantic_hash": "d9fa754ddd68cd99fb07b26a564e0eea"
   },
   "src/components/DataIntakeModal.tsx": {
-    "mtime": 1793811040.5425744,
-    "seen": 1793817724.1114628,
-    "ast_hash": "d3e866295a4c89ad3c1f1e25af14f1f2",
-    "semantic_hash": "d3e866295a4c89ad3c1f1e25af14f1f2"
+    "mtime": 1793818705.1456184,
+    "seen": 1793818934.0763679,
+    "ast_hash": "4f8d8f3444d1da4e2cc2c04f349ce707",
+    "semantic_hash": ""
   },
   "src/components/LivingSky.tsx": {
     "mtime": 1793811738.4575152,
@@ -97,16 +97,16 @@
     "semantic_hash": "a0322ba8f25515ba269c49d26b449bee"
   },
   "src/components/MistakesView.tsx": {
-    "mtime": 1793815935.5027623,
-    "seen": 1793817724.1114728,
-    "ast_hash": "6faf7b09ffe85497199c2f3665cd6e09",
-    "semantic_hash": "6faf7b09ffe85497199c2f3665cd6e09"
+    "mtime": 1793818904.8221009,
+    "seen": 1793818934.076378,
+    "ast_hash": "41c43b6e76162a3aa9349336bf54fb6f",
+    "semantic_hash": ""
   },
   "src/components/MocksView.tsx": {
-    "mtime": 1793815935.5032563,
-    "seen": 1793817724.111474,
-    "ast_hash": "203e4e24a6d1b090f3e69d3a38dc04d9",
-    "semantic_hash": "203e4e24a6d1b090f3e69d3a38dc04d9"
+    "mtime": 1793818662.487829,
+    "seen": 1793818934.0763788,
+    "ast_hash": "e26553f647d1147a0373e52021b6343f",
+    "semantic_hash": ""
   },
   "src/components/PaperExamModal.tsx": {
     "mtime": 1793810594.5496278,
@@ -133,10 +133,10 @@
     "semantic_hash": "8339d7c3bf6c749ac17cc6ea84d0b0e6"
   },
   "src/components/SettingsView.tsx": {
-    "mtime": 1793809347.5622575,
-    "seen": 1793817724.1114838,
-    "ast_hash": "29fccad54f17f88eeea466f04f754b5b",
-    "semantic_hash": "29fccad54f17f88eeea466f04f754b5b"
+    "mtime": 1793818395.8832233,
+    "seen": 1793818934.076389,
+    "ast_hash": "b0fe01ed820e74c47e657dd998b07ec4",
+    "semantic_hash": ""
   },
   "src/components/Sidebar.tsx": {
     "mtime": 1793815935.503625,
@@ -151,10 +151,10 @@
     "semantic_hash": "3b0fcbb34fbf12d9f37173f4ef753dfc"
   },
   "src/db/db.ts": {
-    "mtime": 1793815935.5041249,
-    "seen": 1793817724.111487,
-    "ast_hash": "cfbc72faa0b7041bb13309cbf8cfaa6c",
-    "semantic_hash": "cfbc72faa0b7041bb13309cbf8cfaa6c"
+    "mtime": 1793818631.8443787,
+    "seen": 1793818934.076392,
+    "ast_hash": "b7e555b203d26e2f8207c02daad69c8c",
+    "semantic_hash": ""
   },
   "src/main.tsx": {
     "mtime": 1793785518.8508348,
@@ -229,10 +229,10 @@
     "semantic_hash": "be7c45c9f9290592eac4b4b99448b866"
   },
   "safari-extension/content/full-mock-scanner.js": {
-    "mtime": 1793815935.493561,
-    "seen": 1793817724.111427,
-    "ast_hash": "e3f2eefba8c14b0553bfc4d740c3c867",
-    "semantic_hash": "e3f2eefba8c14b0553bfc4d740c3c867"
+    "mtime": 1793818712.743346,
+    "seen": 1793818934.076332,
+    "ast_hash": "e30cb5e54ba26a1572a3e3fa989cb177",
+    "semantic_hash": ""
   },
   "safari-extension/content/study-app-bridge.js": {
     "mtime": 1793815935.4938612,
@@ -241,10 +241,10 @@
     "semantic_hash": "eba47420e26759c98e0ff4ca5b7663e2"
   },
   "safari-extension/content/testbook-adapter.js": {
-    "mtime": 1793811145.1030724,
-    "seen": 1793817724.1114292,
-    "ast_hash": "e09a63eea4c10a77d38369ae8596783c",
-    "semantic_hash": "e09a63eea4c10a77d38369ae8596783c"
+    "mtime": 1793818718.2219877,
+    "seen": 1793818934.076334,
+    "ast_hash": "ca57c1628078035b75fdec2cdf394697",
+    "semantic_hash": ""
   },
   "safari-extension/manifest.json": {
     "mtime": 1793816714.1310618,

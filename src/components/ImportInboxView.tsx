@@ -28,8 +28,10 @@ import {
   BookOpen,
   Eye,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Trash2
 } from 'lucide-react';
+import { normalizeOptionObjects } from '../utils/normalizeOptions';
 
 export interface ImportInboxViewProps {
   initialPayload?: StudyBridgeImportPayload | null;
@@ -108,15 +110,76 @@ export const ImportInboxView: React.FC<ImportInboxViewProps> = ({
     const dateStr = capturedAt ? capturedAt.split('T')[0] : getTodayDateStr();
     setMockDate(dateStr);
 
-    // Extract mistakes: questions that are Wrong or Skipped
-    const candidates = (sd.questions || []).filter((q) => {
-      const status = getScannedQuestionStatus(q);
-      return status === 'Wrong' || status === 'Skipped';
-    });
+    // Extract mistakes: questions that are Wrong, Skipped, or flagged for review
+    const candidates = (sd.questions || [])
+      .filter((q) => {
+        const status = getScannedQuestionStatus(q);
+        return status === 'Wrong' || status === 'Skipped' || q.needsReview;
+      })
+      .map((q) => {
+        const norm = normalizeOptionObjects(q.options || []);
+        const matchedCorr = norm.options.find((o) => o.isCorrect || (q.correctAnswer && o.text.toLowerCase().includes(q.correctAnswer.toLowerCase())));
+        const matchedSel = norm.options.find((o) => o.isSelected || (q.selectedAnswer && o.text.toLowerCase().includes(q.selectedAnswer.toLowerCase())));
+
+        return {
+          ...q,
+          options: norm.options,
+          correctAnswer: matchedCorr ? matchedCorr.text : (q.correctAnswer || 'See solution'),
+          selectedAnswer: (q.selectedAnswer && /skipped|unattempt/i.test(q.selectedAnswer))
+            ? 'Left unattempted'
+            : (matchedSel ? matchedSel.text : (q.selectedAnswer || 'Left unattempted')),
+          needsReview: norm.needsReview || Boolean(q.needsReview),
+          reviewReason: norm.reason || q.reviewReason
+        };
+      });
+
     setInboxQuestions(candidates);
     setTriageIndex(0);
     setSavedCount(0);
     setSkippedCount(0);
+  };
+
+  const handleDeleteOption = (qNum: number, optIdx: number) => {
+    const updateQ = (q: ScannedQuestion): ScannedQuestion => {
+      const remaining = (q.options || []).filter((_, idx) => idx !== optIdx);
+      const reindexed = remaining.map((opt, idx) => ({
+        ...opt,
+        index: idx,
+        label: String.fromCharCode(65 + idx)
+      }));
+      const norm = normalizeOptionObjects(reindexed);
+      return {
+        ...q,
+        options: norm.options,
+        needsReview: norm.needsReview,
+        reviewReason: norm.reason
+      };
+    };
+
+    setInboxQuestions((prev) => prev.map((q) => (q.questionNumber === qNum ? updateQ(q) : q)));
+    if (openQuestion && openQuestion.questionNumber === qNum) {
+      setOpenQuestion((prev) => (prev ? updateQ(prev) : null));
+    }
+  };
+
+  const handleSetCorrectAnswer = (qNum: number, optIdx: number) => {
+    const updateQ = (q: ScannedQuestion): ScannedQuestion => {
+      const updatedOpts = (q.options || []).map((opt, idx) => ({
+        ...opt,
+        isCorrect: idx === optIdx
+      }));
+      const chosen = updatedOpts[optIdx];
+      return {
+        ...q,
+        options: updatedOpts,
+        correctAnswer: chosen ? chosen.text : q.correctAnswer
+      };
+    };
+
+    setInboxQuestions((prev) => prev.map((q) => (q.questionNumber === qNum ? updateQ(q) : q)));
+    if (openQuestion && openQuestion.questionNumber === qNum) {
+      setOpenQuestion((prev) => (prev ? updateQ(prev) : null));
+    }
   };
 
   // Check for duplicate mock in Dexie
@@ -285,13 +348,20 @@ export const ImportInboxView: React.FC<ImportInboxViewProps> = ({
       : secName.toLowerCase().includes('quant') || secName.toLowerCase().includes('math') ? 'quant'
       : secName.toLowerCase().includes('eng') ? 'english' : 'general';
 
+    const formattedOptions = (currentTriageQuestion.options || []).map((opt, i) =>
+      `${String.fromCharCode(65 + i)}. ${opt.text}${opt.isCorrect ? ' [Correct]' : ''}${opt.isSelected ? ' [Selected]' : ''}`
+    ).join('\n');
+
+    const optCount = currentTriageQuestion.options?.length || 0;
+    const isStillNeedsReview = Boolean(currentTriageQuestion.needsReview || (optCount > 0 && (optCount < 2 || optCount > 5)));
+
     const newMistake: MistakeEntry = {
       mockName,
       sectionId: secId,
       sectionName: secName,
       topic: currentTriageQuestion.topic || secName,
       questionNumber: currentTriageQuestion.questionNumber,
-      questionText: currentTriageQuestion.questionText,
+      questionText: currentTriageQuestion.questionText + (formattedOptions ? '\n\nOptions:\n' + formattedOptions : ''),
       questionImage: currentTriageQuestion.questionImage,
       myAnswer: currentTriageQuestion.selectedAnswer || 'Left unattempted',
       correctAnswer: currentTriageQuestion.correctAnswer || 'Refer to solution',
@@ -305,7 +375,9 @@ export const ImportInboxView: React.FC<ImportInboxViewProps> = ({
       ruleToRemember: ruleToRemember.trim() || `Review key formula/rules for ${currentTriageQuestion.topic || secName}.`,
       difficulty: 'Medium',
       tags: ['testbook-import', 'inbox-triaged'],
-      status: 'New',
+      status: isStillNeedsReview ? 'inbox' : 'New',
+      needsReview: isStillNeedsReview,
+      reviewReason: currentTriageQuestion.reviewReason,
       interval: 1,
       consecutiveCorrect: 0,
       nextReviewDate: addDaysToDate(today, 1),
@@ -567,6 +639,11 @@ export const ImportInboxView: React.FC<ImportInboxViewProps> = ({
                       }`}>
                         {status === 'Wrong' ? '✕ Wrong Answer' : '○ Left Unattempted'}
                       </span>
+                      {q.needsReview && (
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-700 flex items-center gap-1">
+                          ⚠️ Needs review
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
@@ -592,6 +669,12 @@ export const ImportInboxView: React.FC<ImportInboxViewProps> = ({
                   <p className="text-sm text-stone-900 dark:text-stone-100 font-medium mb-3 line-clamp-2">
                     {q.questionText}
                   </p>
+
+                  {q.needsReview && (
+                    <div className="mb-3 text-xs font-semibold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-lg border border-amber-200 dark:border-amber-800 flex items-center gap-1.5">
+                      <span>⚠️ Review reason: {q.reviewReason || `${q.options?.length || 0} options found, expected 2 to 5`}</span>
+                    </div>
+                  )}
 
                   <div className="grid sm:grid-cols-2 gap-2 text-xs bg-stone-50 dark:bg-stone-800/50 p-3 rounded-lg">
                     <div>
@@ -696,74 +779,104 @@ export const ImportInboxView: React.FC<ImportInboxViewProps> = ({
                   </div>
                 ) : (
                   <div className="grid gap-2.5">
-                    {openQuestion.options.slice(0, 4).map((opt, i) => {
-                      const isCorrect = isOptionCorrect(opt, i, openQuestion);
-                      const isSelected = selectedOptionIdx === i;
-
-                      // Style determination
-                      let optionClasses = 'p-3 rounded-xl border-2 text-sm flex items-start gap-2.5 text-left transition-all';
-                      let letterClasses = 'font-mono text-xs font-bold px-2 py-0.5 rounded';
-
-                      if (!hasSubmitted) {
-                        if (isSelected) {
-                          optionClasses += ' border-blue-600 bg-blue-50/70 dark:bg-blue-950/40 text-blue-950 dark:text-blue-100 shadow-sm';
-                          letterClasses += ' bg-blue-600 text-white';
-                        } else {
-                          optionClasses += ' border-stone-200 dark:border-stone-700 bg-stone-50/50 dark:bg-stone-800/40 text-stone-800 dark:text-stone-200 hover:border-stone-400 dark:hover:border-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer';
-                          letterClasses += ' bg-stone-200 dark:bg-stone-700 text-stone-700 dark:text-stone-300';
-                        }
-                      } else {
-                        // Submitted state
-                        if (isCorrect && isSelected) {
-                          // User picked correct
-                          optionClasses += ' border-[var(--mint)] bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-100';
-                          letterClasses += ' bg-[var(--mint)] text-white';
-                        } else if (!isCorrect && isSelected) {
-                          // User picked wrong
-                          optionClasses += ' border-rose-500 bg-rose-50 dark:bg-rose-950/40 text-rose-900 dark:text-rose-100';
-                          letterClasses += ' bg-rose-500 text-white';
-                        } else if (isCorrect && !isSelected) {
-                          // Correct option not picked
-                          optionClasses += ' border-[var(--mint)] bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-900 dark:text-emerald-200';
-                          letterClasses += ' bg-[var(--mint)] text-white';
-                        } else {
-                          // Neutral unselected
-                          optionClasses += ' border-stone-200 dark:border-stone-800 bg-stone-50/30 dark:bg-stone-900/40 text-stone-400 dark:text-stone-600 opacity-60';
-                          letterClasses += ' bg-stone-200/60 dark:bg-stone-800 text-stone-400 dark:text-stone-600';
-                        }
+                    {(() => {
+                      if (openQuestion.options.length > 5) {
+                        console.warn(`[ImportInboxView] Safety net triggered: question ${openQuestion.questionNumber} has ${openQuestion.options.length} options, expected <= 5.`);
                       }
+                      return openQuestion.options.map((opt, i) => {
+                        const isCorrect = isOptionCorrect(opt, i, openQuestion);
+                        const isSelected = selectedOptionIdx === i;
 
-                      return (
-                        <button
-                          key={i}
-                          type="button"
-                          disabled={hasSubmitted}
-                          onClick={() => setSelectedOptionIdx(i)}
-                          className={optionClasses}
-                        >
-                          <span className={letterClasses}>
-                            {String.fromCharCode(65 + i)}
-                          </span>
-                          <span className="flex-1 leading-snug">{opt.text}</span>
+                        // Style determination
+                        let optionClasses = 'p-3 rounded-xl border-2 text-sm flex items-start gap-2.5 text-left transition-all';
+                        let letterClasses = 'font-mono text-xs font-bold px-2 py-0.5 rounded';
 
-                          {hasSubmitted && isCorrect && isSelected && (
-                            <span className="text-xs font-bold text-[var(--mint)] px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/60 shrink-0">
-                              ✓ Correct!
-                            </span>
-                          )}
-                          {hasSubmitted && !isCorrect && isSelected && (
-                            <span className="text-xs font-bold text-rose-600 px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-900/60 shrink-0">
-                              ✕ Wrong
-                            </span>
-                          )}
-                          {hasSubmitted && isCorrect && !isSelected && (
-                            <span className="text-xs font-bold text-[var(--mint)] px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/60 shrink-0">
-                              ✓ Correct Answer
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
+                        if (!hasSubmitted) {
+                          if (isSelected) {
+                            optionClasses += ' border-blue-600 bg-blue-50/70 dark:bg-blue-950/40 text-blue-950 dark:text-blue-100 shadow-sm';
+                            letterClasses += ' bg-blue-600 text-white';
+                          } else {
+                            optionClasses += ' border-stone-200 dark:border-stone-700 bg-stone-50/50 dark:bg-stone-800/40 text-stone-800 dark:text-stone-200 hover:border-stone-400 dark:hover:border-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer';
+                            letterClasses += ' bg-stone-200 dark:bg-stone-700 text-stone-700 dark:text-stone-300';
+                          }
+                        } else {
+                          // Submitted state
+                          if (isCorrect && isSelected) {
+                            optionClasses += ' border-[var(--mint)] bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-100';
+                            letterClasses += ' bg-[var(--mint)] text-white';
+                          } else if (!isCorrect && isSelected) {
+                            optionClasses += ' border-rose-500 bg-rose-50 dark:bg-rose-950/40 text-rose-900 dark:text-rose-100';
+                            letterClasses += ' bg-rose-500 text-white';
+                          } else if (isCorrect && !isSelected) {
+                            optionClasses += ' border-[var(--mint)] bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-900 dark:text-emerald-200';
+                            letterClasses += ' bg-[var(--mint)] text-white';
+                          } else {
+                            optionClasses += ' border-stone-200 dark:border-stone-800 bg-stone-50/30 dark:bg-stone-900/40 text-stone-400 dark:text-stone-600 opacity-60';
+                            letterClasses += ' bg-stone-200/60 dark:bg-stone-800 text-stone-400 dark:text-stone-600';
+                          }
+                        }
+
+                        return (
+                          <div key={i} className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={hasSubmitted}
+                              onClick={() => setSelectedOptionIdx(i)}
+                              className={`flex-1 ${optionClasses}`}
+                            >
+                              <span className={letterClasses}>
+                                {String.fromCharCode(65 + i)}
+                              </span>
+                              <span className="flex-1 leading-snug">{opt.text}</span>
+
+                              {hasSubmitted && isCorrect && isSelected && (
+                                <span className="text-xs font-bold text-[var(--mint)] px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/60 shrink-0">
+                                  ✓ Correct!
+                                </span>
+                              )}
+                              {hasSubmitted && !isCorrect && isSelected && (
+                                <span className="text-xs font-bold text-rose-600 px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-900/60 shrink-0">
+                                  ✕ Wrong
+                                </span>
+                              )}
+                              {hasSubmitted && isCorrect && !isSelected && (
+                                <span className="text-xs font-bold text-[var(--mint)] px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/60 shrink-0">
+                                  ✓ Correct Answer
+                                </span>
+                              )}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSetCorrectAnswer(openQuestion.questionNumber, i);
+                              }}
+                              className={`px-2 py-1.5 rounded-lg text-xs font-semibold border transition-colors shrink-0 ${
+                                isCorrect
+                                  ? 'bg-emerald-600 text-white border-emerald-600'
+                                  : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 border-stone-300 dark:border-stone-700 hover:border-emerald-500'
+                              }`}
+                              title="Mark as correct answer"
+                            >
+                              {isCorrect ? '✓ Correct' : 'Set Correct'}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteOption(openQuestion.questionNumber, i);
+                              }}
+                              className="p-2 text-stone-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors shrink-0"
+                              title="Delete extra option"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        );
+                      });
+                    })()}
                   </div>
                 )}
               </div>
@@ -969,29 +1082,63 @@ export const ImportInboxView: React.FC<ImportInboxViewProps> = ({
               {/* Options */}
               {currentTriageQuestion.options && currentTriageQuestion.options.length > 0 && (
                 <div className="space-y-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-stone-400">Options</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-stone-400">Options</span>
+                    {currentTriageQuestion.needsReview && (
+                      <span className="text-xs font-bold text-amber-600 dark:text-amber-400">
+                        ⚠️ {currentTriageQuestion.reviewReason || 'Needs Review: Check options'}
+                      </span>
+                    )}
+                  </div>
                   <div className="grid gap-2">
-                    {currentTriageQuestion.options.slice(0, 4).map((opt, i) => {
-                      const isCorrect = opt.isCorrect || opt.text === currentTriageQuestion.correctAnswer;
-                      const isSelected = opt.isSelected || opt.text === currentTriageQuestion.selectedAnswer;
-                      return (
-                        <div
-                          key={i}
-                          className={`p-3 rounded-xl border text-sm flex items-start gap-2 ${
-                            isCorrect
-                              ? 'border-emerald-300 bg-emerald-50/60 dark:bg-emerald-950/20 text-emerald-900 dark:text-emerald-200'
-                              : isSelected
-                              ? 'border-red-300 bg-red-50/60 dark:bg-red-950/20 text-red-900 dark:text-red-200'
-                              : 'border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-stone-800 dark:text-stone-200'
-                          }`}
-                        >
-                          <span className="font-mono text-xs font-bold">{String.fromCharCode(65 + i)}.</span>
-                          <span className="flex-1">{opt.text}</span>
-                          {isCorrect && <span className="text-xs font-bold text-emerald-600">✓ Correct</span>}
-                          {isSelected && !isCorrect && <span className="text-xs font-bold text-red-600">✕ Your Answer</span>}
-                        </div>
-                      );
-                    })}
+                    {(() => {
+                      if (currentTriageQuestion.options.length > 5) {
+                        console.warn(`[ImportInboxView] Safety net triggered: question ${currentTriageQuestion.questionNumber} has ${currentTriageQuestion.options.length} options, expected <= 5.`);
+                      }
+                      return currentTriageQuestion.options.map((opt, i) => {
+                        const isCorrect = opt.isCorrect || opt.text === currentTriageQuestion.correctAnswer;
+                        const isSelected = opt.isSelected || opt.text === currentTriageQuestion.selectedAnswer;
+                        return (
+                          <div
+                            key={i}
+                            className={`p-3 rounded-xl border text-sm flex items-center gap-2 ${
+                              isCorrect
+                                ? 'border-emerald-300 bg-emerald-50/60 dark:bg-emerald-950/20 text-emerald-900 dark:text-emerald-200'
+                                : isSelected
+                                ? 'border-red-300 bg-red-50/60 dark:bg-red-950/20 text-red-900 dark:text-red-200'
+                                : 'border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-stone-800 dark:text-stone-200'
+                            }`}
+                          >
+                            <span className="font-mono text-xs font-bold">{String.fromCharCode(65 + i)}.</span>
+                            <span className="flex-1">{opt.text}</span>
+                            {isCorrect && <span className="text-xs font-bold text-emerald-600 shrink-0">✓ Correct</span>}
+                            {isSelected && !isCorrect && <span className="text-xs font-bold text-red-600 shrink-0">✕ Your Answer</span>}
+
+                            <button
+                              type="button"
+                              onClick={() => handleSetCorrectAnswer(currentTriageQuestion.questionNumber, i)}
+                              className={`px-2 py-1 rounded text-xs font-semibold border transition-colors shrink-0 ${
+                                isCorrect
+                                  ? 'bg-emerald-600 text-white border-emerald-600'
+                                  : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 border-stone-300 dark:border-stone-700 hover:border-emerald-500'
+                              }`}
+                              title="Mark as correct answer"
+                            >
+                              {isCorrect ? 'Correct' : 'Set Correct'}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteOption(currentTriageQuestion.questionNumber, i)}
+                              className="p-1.5 text-stone-400 hover:text-rose-600 dark:hover:text-rose-400 rounded hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors shrink-0"
+                              title="Delete extra option"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        );
+                      });
+                    })()}
                   </div>
                 </div>
               )}

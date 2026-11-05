@@ -1,8 +1,12 @@
 {
-  "13": "ref_fs",
+  "0": "db/db.ts",
+  "5": "test_visual_qa.cjs",
+  "11": "devDependencies",
+  "13": "ref_path",
   "16": "package.json",
-  "33": "@testing-library/jest-dom",
-  "34": "@types/react@^18.3.18",
-  "43": "tailwind.config.js",
-  "44": "test_visual_qa.cjs"
+  "17": "postcss@^8.5.3",
+  "32": "react",
+  "33": "@types/node@^22.13.10",
+  "42": "bookmarklet.js",
+  "43": "tailwind.config.js"
 }

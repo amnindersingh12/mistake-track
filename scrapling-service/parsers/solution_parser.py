@@ -1,6 +1,10 @@
 import re
+import unicodedata
 from typing import List, Optional
 from pydantic import BaseModel
+
+DEVANAGARI = re.compile(r'[\u0900-\u097F]')
+LABEL = re.compile(r'^\(?([A-Ea-e]|[1-5])[\).:\-]\s+')
 from scrapling import Adaptor
 
 
@@ -79,10 +83,7 @@ def parse_solution(html: str) -> QuestionSolution:
         question_text = re.sub(r'\s+', ' ', raw_q.strip())
 
     # 7. Options
-    options: List[SolutionOption] = []
-    correct_answer = None
-    user_answer = None
-
+    raw_candidates = []
     # Target the active options list in #questions
     opt_elements = page.css("#questions ul.list-unstyled.clearfix.mar-b24 li.option")
     if not opt_elements:
@@ -90,12 +91,14 @@ def parse_solution(html: str) -> QuestionSolution:
     if not opt_elements:
         opt_elements = page.css(".detailed-question ul.list-unstyled li.option")
 
-    for idx, opt in enumerate(opt_elements):
-        label = chr(65 + idx)
-
+    for opt in opt_elements:
         desc_el = opt.css_first('[ng-bind-html*="parseDesc"], .qns-view-box, label')
         raw_text = (desc_el.get_all_text() or desc_el.text if desc_el else opt.get_all_text() or opt.text) or ""
-        text = re.sub(r'\s+', ' ', raw_text.strip())
+        text = unicodedata.normalize('NFKC', raw_text)
+        text = re.sub(r'\s+', ' ', text).strip()
+        text = LABEL.sub('', text).strip()
+        if not text:
+            continue
 
         cls = opt.attrib.get("class", "")
         classes = set(cls.split())
@@ -105,18 +108,45 @@ def parse_solution(html: str) -> QuestionSolution:
         stat_el = opt.css_first(".option-stat")
         stat = (stat_el.get_all_text() or stat_el.text if stat_el else "").strip() or None
 
-        if is_corr:
-            correct_answer = text
-        if is_sel:
-            user_answer = text
+        raw_candidates.append({
+            "text": text,
+            "is_corr": is_corr,
+            "is_sel": is_sel,
+            "stat": stat
+        })
+
+    # If English and Hindi are mixed, keep the English set
+    english = [item for item in raw_candidates if not DEVANAGARI.search(item["text"])]
+    if len(english) >= 2 and len(english) < len(raw_candidates):
+        raw_candidates = english
+
+    # Dedupe by lowercased text, preserving order
+    seen_texts = set()
+    deduped = []
+    for item in raw_candidates:
+        key = item["text"].lower()
+        if key not in seen_texts:
+            seen_texts.add(key)
+            deduped.append(item)
+
+    options: List[SolutionOption] = []
+    correct_answer = None
+    user_answer = None
+
+    for idx, item in enumerate(deduped):
+        label = chr(65 + idx)
+        if item["is_corr"]:
+            correct_answer = item["text"]
+        if item["is_sel"]:
+            user_answer = item["text"]
 
         options.append(SolutionOption(
             index=idx,
             label=label,
-            text=text,
-            isCorrect=is_corr,
-            isSelected=is_sel,
-            stat=stat
+            text=item["text"],
+            isCorrect=item["is_corr"],
+            isSelected=item["is_sel"],
+            stat=item["stat"]
         ))
 
     # 8. Explanation

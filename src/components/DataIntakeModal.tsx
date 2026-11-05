@@ -28,6 +28,7 @@ import {
 import { Mascot } from './Mascot';
 import { applyBackup, BackupPayload, summarizeBackup, validateBackup } from '../utils/exportImport';
 import { getTodayDateStr } from '../utils/srs';
+import { normalizeOptionObjects, normalizeOptions } from '../utils/normalizeOptions';
 import {
   X,
   FileSpreadsheet,
@@ -160,7 +161,15 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
       // Mode B: Structured Question Review
       if (initialImportPayload.mode === 'question' && initialImportPayload.questionData) {
         const q = initialImportPayload.questionData;
-        const formattedOptions = q.options?.map((opt: any) => `${opt.index + 1}. ${opt.text}${opt.isCorrect ? ' [Correct]' : ''}${opt.isSelected ? ' [Selected]' : ''}`).join('\n') || '';
+        const norm = normalizeOptionObjects(q.options || []);
+        const formattedOptions = norm.options.map((opt) => `${opt.index + 1}. ${opt.text}${opt.isCorrect ? ' [Correct]' : ''}${opt.isSelected ? ' [Selected]' : ''}`).join('\n');
+
+        const matchedCorr = norm.options.find((o) => o.isCorrect || (q.correctAnswer && o.text.toLowerCase().includes(q.correctAnswer.toLowerCase())));
+        const finalCorrectAnswer = matchedCorr ? matchedCorr.text : (q.correctAnswer || 'See solution');
+        const matchedSel = norm.options.find((o) => o.isSelected || (q.selectedAnswer && o.text.toLowerCase().includes(q.selectedAnswer.toLowerCase())));
+        const finalMyAnswer = (q.statusBadge?.toLowerCase().includes('skipped') || q.selectedAnswer === 'Left unattempted')
+          ? 'Left unattempted'
+          : (matchedSel ? matchedSel.text : (q.selectedAnswer || 'Not marked'));
 
         let resultType: ResultType = 'Wrong';
         if (q.statusBadge?.toLowerCase().includes('skipped') || q.selectedAnswer === 'Left unattempted') {
@@ -188,8 +197,8 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
             subtopic: '',
             questionNumber: q.questionNumber || 1,
             questionText: q.questionText + (formattedOptions ? '\n\nOptions:\n' + formattedOptions : ''),
-            myAnswer: q.selectedAnswer || 'Not marked',
-            correctAnswer: q.correctAnswer || 'See solution',
+            myAnswer: finalMyAnswer,
+            correctAnswer: finalCorrectAnswer,
             resultType,
             errorTypes: ['Conceptual gap'],
             timeSpentSeconds: q.timeTaken ? parseTimeString(q.timeTaken).seconds : 60,
@@ -199,7 +208,9 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
             betterApproach: '',
             ruleToRemember: '',
             difficulty: 'Medium',
-            uncertainFields: q.missingFields || []
+            uncertainFields: q.missingFields || [],
+            needsReview: norm.needsReview || Boolean(q.needsReview),
+            reviewReason: norm.reason || q.reviewReason
           },
           uncertainFields: q.missingFields || [],
           unparsedLines: []
@@ -277,6 +288,7 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
   const handleSaveParsedMistake = async () => {
     if (!parsedPaste?.mistake) return;
     const m = parsedPaste.mistake;
+    const isNeedsReview = Boolean(m.needsReview);
     const newMistake: Omit<MistakeEntry, 'id'> = {
       mockName: m.mockName || 'External / unlinked',
       sectionId: m.sectionId,
@@ -297,7 +309,9 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
       ruleToRemember: m.ruleToRemember,
       difficulty: m.difficulty,
       tags: ['studybridge-import'],
-      status: 'New',
+      status: isNeedsReview ? 'inbox' : 'New',
+      needsReview: isNeedsReview,
+      reviewReason: m.reviewReason,
       interval: 1,
       consecutiveCorrect: 0,
       nextReviewDate: getTodayDateStr(),
@@ -309,7 +323,11 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
     if (initialImportPayload?.id && onImportAck) {
       onImportAck(initialImportPayload.id, 'saved');
     }
-    onSuccess(`Imported Question ${m.questionNumber} (${m.topic}) to Mistakes Log!`);
+    if (isNeedsReview) {
+      onSuccess(`Question ${m.questionNumber} sent to Import Inbox for review (${m.reviewReason || 'Check options'})!`);
+    } else {
+      onSuccess(`Imported Question ${m.questionNumber} (${m.topic}) to Mistakes Log!`);
+    }
     onClose();
   };
 
@@ -473,12 +491,19 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
             const qStatus = getScannedQuestionStatus(q);
             const resultType: ResultType = qStatus === 'Skipped' ? 'Left unattempted' : qStatus === 'Correct' ? 'Correct-but-slow' : 'Wrong';
             const reasons = questionMistakeReasons[q.questionNumber] || ['Conceptual gap'];
-            const uniqueOptions = (q.options || [])
-              .filter((opt, idx, arr) => arr.findIndex((o) => o.text.trim().toLowerCase() === opt.text.trim().toLowerCase()) === idx)
-              .slice(0, 5);
-            const formattedOptions = uniqueOptions.map((opt, i) =>
+            const norm = normalizeOptionObjects(q.options || []);
+            const formattedOptions = norm.options.map((opt, i) =>
               `${String.fromCharCode(65 + i)}. ${opt.text}${opt.isCorrect ? ' [Correct]' : ''}${opt.isSelected ? ' [Selected]' : ''}`
             ).join('\n');
+
+            const matchedCorr = norm.options.find((o) => o.isCorrect || (q.correctAnswer && o.text.toLowerCase().includes(q.correctAnswer.toLowerCase())));
+            const finalCorrectAnswer = matchedCorr ? matchedCorr.text : (q.correctAnswer || (q.explanation ? 'See explanation' : 'Not captured'));
+
+            const matchedSel = norm.options.find((o) => o.isSelected || (q.selectedAnswer && o.text.toLowerCase().includes(q.selectedAnswer.toLowerCase())));
+            const finalMyAnswer = qStatus === 'Skipped' ? 'Left unattempted' : (matchedSel ? matchedSel.text : (q.selectedAnswer || 'Not marked'));
+
+            const isNeedsReview = Boolean(norm.needsReview || q.needsReview);
+            const reviewReason = norm.reason || q.reviewReason;
 
             return {
               mockId,
@@ -491,8 +516,8 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
               questionNumber: q.questionNumber,
               questionText: q.questionText + (formattedOptions ? '\n\nOptions:\n' + formattedOptions : ''),
               questionImage: q.questionImage,
-              myAnswer: q.selectedAnswer || (qStatus === 'Skipped' ? 'Left unattempted' : 'Not marked'),
-              correctAnswer: q.correctAnswer || (q.explanation ? 'See explanation' : 'Not captured'),
+              myAnswer: finalMyAnswer,
+              correctAnswer: finalCorrectAnswer,
               resultType,
               errorTypes: reasons.length > 0 ? reasons : ['Conceptual gap'],
               timeSpentSeconds: q.timeTaken ? parseTimeString(q.timeTaken).seconds : 60,
@@ -503,7 +528,9 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
               ruleToRemember: `Review key concept in ${q.topic || q.section}.`,
               difficulty: 'Medium',
               tags: ['studybridge-v4', 'fullscan', q.section.toLowerCase().replace(/[^a-z0-9]/g, '-')],
-              status: 'New',
+              status: isNeedsReview ? 'inbox' : 'New',
+              needsReview: isNeedsReview,
+              reviewReason,
               interval: 1,
               consecutiveCorrect: 0,
               nextReviewDate: todayStr,

@@ -5,6 +5,8 @@
  * attributes, fragile selector tracking, and privacy rules.
  */
 
+import { normalizeOptions, normalizeOptionObjects } from './normalizeOptions';
+
 export interface ExtractedSectionSummary {
   sectionName: string;
   questionCount: number;
@@ -69,6 +71,8 @@ export interface ExtractedQuestion {
   avgTime?: string;
   missingFields: string[];
   rawQuestionHtml?: string;
+  needsReview?: boolean;
+  reviewReason?: string;
 }
 
 /**
@@ -423,13 +427,10 @@ export function extractVisibleQuestion(root: Document | Element): ExtractedQuest
     throw new TestbookMarkupError('questionText', TESTBOOK_SELECTORS.questionText, 'Visible question statement text could not be located.');
   }
 
-  // 6. Options Extraction
-  const options: ExtractedQuestionOption[] = [];
-  let selectedAnswer: string | undefined;
-  let correctAnswer: string | undefined;
-
-  const optionEls = root.querySelectorAll(TESTBOOK_SELECTORS.optionsList);
-  let optIndex = 0;
+  // 6. Options Extraction (scoped to question container)
+  const qContainer = (root as Document | Element).querySelector?.(TESTBOOK_SELECTORS.questionContainer) || root;
+  const optionEls = qContainer.querySelectorAll(TESTBOOK_SELECTORS.optionsList);
+  const rawOptions: Array<{ text: string; isCorrect?: boolean; isSelected?: boolean }> = [];
 
   for (const opt of Array.from(optionEls)) {
     if (!isElementVisible(opt)) continue;
@@ -449,18 +450,28 @@ export function extractVisibleQuestion(root: Document | Element): ExtractedQuest
       opt.classList.contains('reattempt-icon') ||
       opt.classList.contains('selected');
 
-    if (isCorrect) correctAnswer = optText;
-    if (isSelected && statusBadge.toLowerCase() !== 'skipped') selectedAnswer = optText;
-
-    options.push({
-      index: optIndex,
-      label: chr(65 + optIndex),
+    rawOptions.push({
       text: optText,
       isCorrect,
       isSelected
     });
-    optIndex++;
   }
+
+  const normalized = normalizeOptionObjects(rawOptions);
+  let selectedAnswer: string | undefined;
+  let correctAnswer: string | undefined;
+
+  const options: ExtractedQuestionOption[] = normalized.options.map((opt) => {
+    if (opt.isCorrect) correctAnswer = opt.text;
+    if (opt.isSelected && statusBadge.toLowerCase() !== 'skipped') selectedAnswer = opt.text;
+    return {
+      index: opt.index,
+      label: opt.label,
+      text: opt.text,
+      isCorrect: opt.isCorrect,
+      isSelected: opt.isSelected
+    };
+  });
 
   if (!selectedAnswer && /skipped|unattempt/i.test(statusBadge)) {
     selectedAnswer = 'Left unattempted';
@@ -516,7 +527,9 @@ export function extractVisibleQuestion(root: Document | Element): ExtractedQuest
     timeTaken,
     timeSpent: timeTaken,
     avgTime,
-    missingFields
+    missingFields,
+    needsReview: normalized.needsReview,
+    reviewReason: normalized.reason
   };
 }
 
@@ -572,18 +585,14 @@ export function extractQuestionPaperDOM(root: Document | Element): ExtractedQues
       }
 
       // Options
-      const options: ExtractedQuestionOption[] = [];
       const optItems = item.querySelectorAll('ol li.option');
-      let optIdx = 0;
-      for (const opt of Array.from(optItems)) {
-        const optText = cleanText(opt.textContent).replace(/^\([a-zA-Z0-9]+\)\s*/, '');
-        options.push({
-          index: optIdx,
-          label: chr(65 + optIdx),
-          text: optText
-        });
-        optIdx++;
-      }
+      const rawOpts = Array.from(optItems).map((opt) => cleanText(opt.textContent));
+      const norm = normalizeOptions(rawOpts);
+      const options: ExtractedQuestionOption[] = norm.options.map((text, idx) => ({
+        index: idx,
+        label: chr(65 + idx),
+        text
+      }));
 
       results.push({
         questionNumber: qNum,

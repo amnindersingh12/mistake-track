@@ -105,6 +105,8 @@ export interface MistakeEntry {
   difficulty: Difficulty;
   tags: string[];
   status: MistakeStatus;
+  needsReview?: boolean;
+  reviewReason?: string;
   // Inbox fields:
   source?: string;
   importedAt?: string;
@@ -288,6 +290,8 @@ export interface ScannedQuestion {
   avgTime?: string;
   solutionStatus: 'captured' | 'unavailable' | 'failed';
   isMistakeCandidate?: boolean;
+  needsReview?: boolean;
+  reviewReason?: string;
 }
 
 export interface FullMockScanResult {

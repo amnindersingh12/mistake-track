@@ -1,7 +1,11 @@
 import re
+import unicodedata
 from typing import List, Optional
 from pydantic import BaseModel
 from scrapling import Adaptor
+
+DEVANAGARI = re.compile(r'[\u0900-\u097F]')
+LABEL = re.compile(r'^\(?([A-Ea-e]|[1-5])[\).:\-]\s+')
 
 
 class QuestionOption(BaseModel):
@@ -75,24 +79,32 @@ def parse_question_paper(html: str) -> List[PaperQuestion]:
                 q_text = re.sub(r'Marks[:\s]*[0-9.]+', '', q_text).strip()
 
             # 4. Options
-            options: List[QuestionOption] = []
+            raw_candidates = []
             opt_items = item.css("ol li.option")
             for idx, opt in enumerate(opt_items):
-                opt_raw = opt.text or ""
-                label_m = re.search(r'\(([a-zA-Z0-9]+)\)', opt_raw)
-                opt_label = label_m.group(1).upper() if label_m else chr(65 + idx)
+                opt_raw = ' '.join(opt._root.itertext()) if hasattr(opt, '_root') else (opt.get_all_text() or opt.text or "")
+                t = unicodedata.normalize('NFKC', opt_raw)
+                t = re.sub(r'\s+', ' ', t).strip()
+                t = LABEL.sub('', t).strip()
+                if t:
+                    raw_candidates.append(t)
 
-                opt_span = opt.css_first("span.qns-view-box")
-                if opt_span and opt_span.text:
-                    opt_text = opt_span.text.strip()
-                else:
-                    opt_text = re.sub(r'^\([a-zA-Z0-9]+\)\s*', '', opt_raw).strip()
+            english = [t for t in raw_candidates if not DEVANAGARI.search(t)]
+            if len(english) >= 2 and len(english) < len(raw_candidates):
+                raw_candidates = english
 
-                options.append(QuestionOption(
-                    index=idx,
-                    label=opt_label,
-                    text=opt_text
-                ))
+            seen_texts = set()
+            deduped = []
+            for t in raw_candidates:
+                key = t.lower()
+                if key not in seen_texts:
+                    seen_texts.add(key)
+                    deduped.append(t)
+
+            options: List[QuestionOption] = [
+                QuestionOption(index=i, label=chr(65 + i), text=t)
+                for i, t in enumerate(deduped)
+            ]
 
             questions.append(PaperQuestion(
                 questionNumber=q_num,

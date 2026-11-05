@@ -31,6 +31,29 @@
     return isNaN(num) ? 0 : num;
   }
 
+  const DEVANAGARI = /[\u0900-\u097F]/;
+  const LABEL = /^\(?([A-Ea-e]|[1-5])[\).:\-]\s+/;
+
+  function normalizeOptionsRaw(raw) {
+    let cleaned = (raw || [])
+      .map((o) => (o || '').normalize('NFKC').replace(/\s+/g, ' ').trim().replace(LABEL, '').trim())
+      .filter(Boolean);
+
+    const english = cleaned.filter((o) => !DEVANAGARI.test(o));
+    if (english.length >= 2 && english.length < cleaned.length) cleaned = english;
+
+    const seen = new Set();
+    const options = cleaned.filter((o) => {
+      const key = o.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    const needsReview = options.length < 2 || options.length > 5;
+    return { options, needsReview, reason: needsReview ? `${options.length} options found, expected 2 to 5` : undefined };
+  }
+
   function delay(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
@@ -172,10 +195,12 @@
           for (const [i, row] of [...rows].entries()) {
             const qEl = row.querySelector("[ng-bind-html*='getQuestionDesc']");
             if (!qEl) continue;
-            const options = [...row.querySelectorAll("ol li[ng-repeat*='option in getOptions']")].map((el, index) => ({
+            const rawOptTexts = [...row.querySelectorAll("ol li[ng-repeat*='option in getOptions']")].map((el) => textOf(el.innerHTML));
+            const norm = normalizeOptionsRaw(rawOptTexts);
+            const options = norm.options.map((text, index) => ({
               label: String.fromCharCode(65 + index),
-              text: textOf(el.innerHTML),
-              html: el.innerHTML
+              text,
+              html: text
             }));
             questions.push({
               number: i + 1,
@@ -663,19 +688,15 @@
       const qImg = document.querySelector('#questions img, .detailed-question img');
       const questionImage = qImg ? qImg.src : undefined;
 
-      const options = [];
-      let selectedAnswer = undefined;
-      let correctAnswer = undefined;
+      const qContainer = document.querySelector('#questions, .detailed-question') || document;
+      const optionEls = qContainer.querySelectorAll('ul.list-unstyled li.option');
+      const rawOptions = [];
 
-      const optionEls = document.querySelectorAll('ul.list-unstyled li.option');
-      let optIdx = 0;
-      const seenOptTexts = new Set();
       for (const opt of Array.from(optionEls)) {
+        if (!isElementVisible(opt)) continue;
         const optDesc = opt.querySelector('[ng-bind-html*="parseDesc"], .qns-view-box, label');
         const optText = cleanText(optDesc ? optDesc.textContent : '');
-        if (!optText || seenOptTexts.has(optText.toLowerCase())) continue;
-        if (options.length >= 5) break;
-        seenOptTexts.add(optText.toLowerCase());
+        if (!optText) continue;
 
         const isCorrect =
           opt.classList.contains('correct-option') ||
@@ -688,16 +709,32 @@
           opt.classList.contains('reattempt-icon') ||
           opt.classList.contains('selected');
 
-        if (isCorrect) correctAnswer = optText;
-        if (isSelected && statusBadge.toLowerCase() !== 'skipped') selectedAnswer = optText;
-
-        options.push({
-          index: optIdx++,
+        rawOptions.push({
           text: optText,
           isCorrect,
           isSelected
         });
       }
+
+      const normalized = normalizeOptionsRaw(rawOptions.map((o) => o.text));
+      let selectedAnswer = undefined;
+      let correctAnswer = undefined;
+
+      const options = normalized.options.map((optText, idx) => {
+        const orig = rawOptions.find((o) => o.text.toLowerCase().includes(optText.toLowerCase()) || optText.toLowerCase().includes(o.text.toLowerCase()));
+        const isCorrect = orig ? orig.isCorrect : false;
+        const isSelected = orig ? orig.isSelected : false;
+        if (isCorrect) correctAnswer = optText;
+        if (isSelected && statusBadge.toLowerCase() !== 'skipped') selectedAnswer = optText;
+
+        return {
+          index: idx,
+          label: String.fromCharCode(65 + idx),
+          text: optText,
+          isCorrect,
+          isSelected
+        };
+      });
 
       if (!selectedAnswer && /skipped|unattempt/i.test(statusBadge)) {
         selectedAnswer = 'Left unattempted';
@@ -729,7 +766,9 @@
         timeTaken,
         avgTime,
         solutionStatus: explanation ? 'captured' : 'unavailable',
-        isMistakeCandidate: Boolean(isMistake)
+        isMistakeCandidate: Boolean(isMistake),
+        needsReview: normalized.needsReview,
+        reviewReason: normalized.reason
       };
     }
 

@@ -23,6 +23,29 @@
     return el.innerText.trim();
   };
 
+  const DEVANAGARI = /[\u0900-\u097F]/;
+  const LABEL = /^\(?([A-Ea-e]|[1-5])[\).:\-]\s+/;
+
+  function normalizeOptionsRaw(raw) {
+    let cleaned = (raw || [])
+      .map((o) => (o || '').normalize('NFKC').replace(/\s+/g, ' ').trim().replace(LABEL, '').trim())
+      .filter(Boolean);
+
+    const english = cleaned.filter((o) => !DEVANAGARI.test(o));
+    if (english.length >= 2 && english.length < cleaned.length) cleaned = english;
+
+    const seen = new Set();
+    const options = cleaned.filter((o) => {
+      const key = o.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    const needsReview = options.length < 2 || options.length > 5;
+    return { options, needsReview, reason: needsReview ? `${options.length} options found, expected 2 to 5` : undefined };
+  }
+
   const total = window.totalnq || 150;
   const wrong = new Set(window.wrongContainer || []);
   const unat = new Set(window.unatContainer || []);
@@ -54,16 +77,25 @@
 
     let correctOpt = vsMap[i] ?? null;
     let userOpt = null;
-    const opts = [];
+    const rawOpts = [];
 
     block.querySelectorAll(`[id^="opt-${i}-"]`).forEach((el, idx) => {
       if (el.classList.contains('correct')) correctOpt = idx;
       if (el.classList.contains('wrong')) userOpt = idx;
-      opts.push({
+      rawOpts.push({
         index: idx,
-        label: String.fromCharCode(65 + idx),
         text: clean(el.querySelector('.rightopt')?.innerHTML)
       });
+    });
+
+    const norm = normalizeOptionsRaw(rawOpts.map(o => o.text));
+    const opts = norm.options.map((optText, idx) => {
+      const orig = rawOpts.find(o => o.text.toLowerCase().includes(optText.toLowerCase()) || optText.toLowerCase().includes(o.text.toLowerCase()));
+      return {
+        index: idx,
+        label: String.fromCharCode(65 + idx),
+        text: optText
+      };
     });
 
     if (unat.has(i)) {
@@ -83,7 +115,9 @@
       userOptionIndex: userOpt,
       userOptionLabel: userOpt !== null ? String.fromCharCode(65 + userOpt) : null,
       status: unat.has(i) ? 'unattempted' : (wrong.has(i) ? 'incorrect' : 'correct'),
-      solution: sol
+      solution: sol,
+      needsReview: norm.needsReview,
+      reviewReason: norm.reason
     });
   }
 

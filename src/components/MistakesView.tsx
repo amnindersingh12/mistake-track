@@ -35,6 +35,9 @@ export function parseQuestionTextAndOptions(rawText: string): {
   const prompt = rawText.slice(0, optionsIndex).trim();
   const optionsPart = rawText.slice(optionsIndex).replace(/\n\s*Options:\s*\n/i, '');
   const lines = optionsPart.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (lines.length > 5) {
+    console.warn(`[MistakesView] Safety net triggered: question has ${lines.length} raw options, expected <= 5.`);
+  }
 
   const parsed: { label: string; text: string; isCorrect: boolean; isSelected: boolean }[] = [];
   const seenTexts = new Set<string>();

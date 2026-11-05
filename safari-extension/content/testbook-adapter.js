@@ -46,6 +46,29 @@
     return true;
   }
 
+  const DEVANAGARI = /[\u0900-\u097F]/;
+  const LABEL = /^\(?([A-Ea-e]|[1-5])[\).:\-]\s+/;
+
+  function normalizeOptionsRaw(raw) {
+    let cleaned = (raw || [])
+      .map((o) => (o || '').normalize('NFKC').replace(/\s+/g, ' ').trim().replace(LABEL, '').trim())
+      .filter(Boolean);
+
+    const english = cleaned.filter((o) => !DEVANAGARI.test(o));
+    if (english.length >= 2 && english.length < cleaned.length) cleaned = english;
+
+    const seen = new Set();
+    const options = cleaned.filter((o) => {
+      const key = o.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    const needsReview = options.length < 2 || options.length > 5;
+    return { options, needsReview, reason: needsReview ? `${options.length} options found, expected 2 to 5` : undefined };
+  }
+
   function cleanText(str) {
     if (!str) return '';
     return str.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
@@ -281,22 +304,16 @@
       );
     }
 
-    const options = [];
-    let selectedAnswer = undefined;
-    let correctAnswer = undefined;
-
-    const optionEls = document.querySelectorAll('ul.list-unstyled li.option');
-    let optIndex = 0;
-    const seenOptTexts = new Set();
+    const qContainer = document.querySelector('#questions, .detailed-question') || document;
+    const optionEls = qContainer.querySelectorAll('ul.list-unstyled li.option');
+    const rawOptions = [];
 
     for (const opt of Array.from(optionEls)) {
       if (!isElementVisible(opt)) continue;
 
       const optDesc = opt.querySelector('[ng-bind-html*="parseDesc"], .qns-view-box, label');
       const optText = cleanText(optDesc ? optDesc.textContent : '');
-      if (!optText || seenOptTexts.has(optText.toLowerCase())) continue;
-      if (options.length >= 5) break;
-      seenOptTexts.add(optText.toLowerCase());
+      if (!optText) continue;
 
       const isCorrect =
         opt.classList.contains('correct-option') ||
@@ -309,16 +326,31 @@
         opt.classList.contains('reattempt-icon') ||
         opt.classList.contains('selected');
 
-      if (isCorrect) correctAnswer = optText;
-      if (isSelected && statusBadge.toLowerCase() !== 'skipped') selectedAnswer = optText;
-
-      options.push({
-        index: optIndex++,
+      rawOptions.push({
         text: optText,
         isCorrect,
         isSelected
       });
     }
+
+    const normalized = normalizeOptionsRaw(rawOptions.map((o) => o.text));
+    let selectedAnswer = undefined;
+    let correctAnswer = undefined;
+
+    const options = normalized.options.map((optText, idx) => {
+      const orig = rawOptions.find((o) => o.text.toLowerCase().includes(optText.toLowerCase()) || optText.toLowerCase().includes(o.text.toLowerCase()));
+      const isCorrect = orig ? orig.isCorrect : false;
+      const isSelected = orig ? orig.isSelected : false;
+      if (isCorrect) correctAnswer = optText;
+      if (isSelected && statusBadge.toLowerCase() !== 'skipped') selectedAnswer = optText;
+
+      return {
+        index: idx,
+        text: optText,
+        isCorrect,
+        isSelected
+      };
+    });
 
     if (!selectedAnswer && /skipped|unattempt/i.test(statusBadge)) {
       selectedAnswer = 'Left unattempted';

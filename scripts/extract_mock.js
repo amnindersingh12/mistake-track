@@ -15,6 +15,29 @@ function decodeToken(str) {
   return decoded.trim();
 }
 
+const DEVANAGARI = /[\u0900-\u097F]/;
+const LABEL = /^\(?([A-Ea-e]|[1-5])[\).:\-]\s+/;
+
+function normalizeOptionsRaw(raw) {
+  let cleaned = (raw || [])
+    .map((o) => (o || '').normalize('NFKC').replace(/\s+/g, ' ').trim().replace(LABEL, '').trim())
+    .filter(Boolean);
+
+  const english = cleaned.filter((o) => !DEVANAGARI.test(o));
+  if (english.length >= 2 && english.length < cleaned.length) cleaned = english;
+
+  const seen = new Set();
+  const options = cleaned.filter((o) => {
+    const key = o.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  const needsReview = options.length < 2 || options.length > 5;
+  return { options, needsReview, reason: needsReview ? `${options.length} options found, expected 2 to 5` : undefined };
+}
+
 function cleanHtmlText(htmlStr) {
   if (!htmlStr) return '';
   return htmlStr
@@ -81,7 +104,7 @@ function parseOliveboardHtml(html) {
 
     const optRegex = new RegExp(`<div id="opt-${i}-(\\d+)"\\s+class="([^"]*)"[\\s\\S]*?<div class="rightopt">([\\s\\S]*?)<\\/div>`, 'g');
     let om;
-    const options = [];
+    const rawOptions = [];
     let correctOpt = vsMap[i] !== undefined ? vsMap[i] : null;
     let userOpt = null;
 
@@ -90,12 +113,12 @@ function parseOliveboardHtml(html) {
       const optClasses = om[2];
       const optRaw = om[3];
       const optText = cleanHtmlText(decodeToken(optRaw));
-      options[optIdx] = {
+      rawOptions.push({
         index: optIdx,
-        label: String.fromCharCode(65 + optIdx),
-        text: optText
-      };
-
+        text: optText,
+        isCorrect: optClasses.includes('correct'),
+        isWrong: optClasses.includes('wrong')
+      });
       if (optClasses.includes('correct')) {
         correctOpt = optIdx;
       }
@@ -103,6 +126,13 @@ function parseOliveboardHtml(html) {
         userOpt = optIdx;
       }
     }
+
+    const norm = normalizeOptionsRaw(rawOptions.map(o => o.text));
+    const options = norm.options.map((optText, idx) => ({
+      index: idx,
+      label: String.fromCharCode(65 + idx),
+      text: optText
+    }));
 
     if (unatContainer.has(i)) {
       userOpt = null;
@@ -125,7 +155,9 @@ function parseOliveboardHtml(html) {
       userOptionIndex: userOpt,
       userOptionLabel: userOpt !== null ? String.fromCharCode(65 + userOpt) : null,
       status: unatContainer.has(i) ? 'unattempted' : (wrongContainer.has(i) ? 'incorrect' : 'correct'),
-      solution: solution
+      solution: solution,
+      needsReview: norm.needsReview,
+      reviewReason: norm.reason
     });
   }
 

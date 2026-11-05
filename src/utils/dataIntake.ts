@@ -13,6 +13,7 @@ import {
   FullMockScanResult
 } from '../types';
 import { getTodayDateStr } from './srs';
+import { normalizeOptions } from './normalizeOptions';
 
 /**
  * Generates sample CSV templates for user download.
@@ -158,6 +159,8 @@ export interface ParsedMistake {
   ruleToRemember: string;
   difficulty: Difficulty;
   uncertainFields: string[];
+  needsReview?: boolean;
+  reviewReason?: string;
 }
 
 /**
@@ -901,6 +904,21 @@ export function parseMistakeCsv(text: string): MistakeCsvParseResult {
       ? row[errorIndex].split(';').map((entry) => entry.trim()).filter(Boolean)
       : ['Concept gap'];
 
+    const rawQText = (qTextIndex >= 0 ? row[qTextIndex] : '') || 'Question not transcribed.';
+    let cleanQText = rawQText;
+    let isNeedsReview = false;
+    let reviewReason: string | undefined;
+
+    const optIdx = rawQText.search(/\n\s*Options:\s*\n/i);
+    if (optIdx !== -1) {
+      const prompt = rawQText.slice(0, optIdx).trim();
+      const optLines = rawQText.slice(optIdx).replace(/\n\s*Options:\s*\n/i, '').split('\n').map((l) => l.trim()).filter(Boolean);
+      const norm = normalizeOptions(optLines);
+      isNeedsReview = norm.needsReview;
+      reviewReason = norm.reason;
+      cleanQText = `${prompt}\n\nOptions:\n${norm.options.map((t, idx) => `${String.fromCharCode(65 + idx)}. ${t}`).join('\n')}`;
+    }
+
     records.push({
       mockName,
       sectionId,
@@ -908,7 +926,7 @@ export function parseMistakeCsv(text: string): MistakeCsvParseResult {
       topic: (topicIndex >= 0 ? row[topicIndex] : '') || 'General',
       subtopic: (subtopicIndex >= 0 ? row[subtopicIndex] : '') || undefined,
       questionNumber: numberAt(row, qNoIndex, rowIndex),
-      questionText: (qTextIndex >= 0 ? row[qTextIndex] : '') || 'Question not transcribed.',
+      questionText: cleanQText,
       myAnswer: (myAnswerIndex >= 0 ? row[myAnswerIndex] : '') || 'N/A',
       correctAnswer: (correctAnswerIndex >= 0 ? row[correctAnswerIndex] : '') || 'N/A',
       resultType,
@@ -921,7 +939,9 @@ export function parseMistakeCsv(text: string): MistakeCsvParseResult {
       ruleToRemember: (ruleIndex >= 0 ? row[ruleIndex] : '') || 'Review this concept.',
       difficulty,
       tags: ['csv-import'],
-      status: 'New',
+      status: isNeedsReview ? 'inbox' : 'New',
+      needsReview: isNeedsReview,
+      reviewReason,
       interval: 1,
       consecutiveCorrect: 0,
       nextReviewDate: todayStr,

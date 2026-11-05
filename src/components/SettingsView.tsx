@@ -13,9 +13,11 @@ import {
   AlertTriangle,
   CheckCircle2,
   FileInput,
-  FolderOpen
+  FolderOpen,
+  Wrench
 } from 'lucide-react';
 import { MangaIconSettings } from './MangaIcons';
+import { planMistakeRepairs, RepairPlan } from '../utils/repairMistakes';
 
 interface SettingsViewProps {
   settings: ExamSettings;
@@ -37,6 +39,42 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [newErrorTypeText, setNewErrorTypeText] = useState('');
   const [confirmClearModal, setConfirmClearModal] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [repairPlan, setRepairPlan] = useState<RepairPlan | null>(null);
+  const [isRepairing, setIsRepairing] = useState(false);
+  const [isRepairModalOpen, setIsRepairModalOpen] = useState(false);
+
+  const handleStartRepairDryRun = async () => {
+    try {
+      const allMistakes = await db.mistakes.toArray();
+      const plan = planMistakeRepairs(allMistakes);
+      setRepairPlan(plan);
+      setIsRepairModalOpen(true);
+    } catch (err: unknown) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Dry run failed' });
+    }
+  };
+
+  const handleApplyRepair = async () => {
+    if (!repairPlan || repairPlan.affectedCount === 0) return;
+    setIsRepairing(true);
+    try {
+      // 1. Automatic backup before applying
+      await exportAllDataAsJson();
+      // 2. Apply repaired records
+      await db.mistakes.bulkPut(repairPlan.repairedRecords);
+      setMessage({
+        type: 'success',
+        text: `Successfully repaired ${repairPlan.affectedCount} mistake record(s)! An automatic backup was saved.`
+      });
+      setIsRepairModalOpen(false);
+      setRepairPlan(null);
+      onDataResetOrLoaded();
+    } catch (err: unknown) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Repair failed' });
+    } finally {
+      setIsRepairing(false);
+    }
+  };
 
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -509,7 +547,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           All data remains strictly on your device. Export full JSON backups, import via CSV/JSON templates, or process raw files from your local drop folder.
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
           {/* Export JSON */}
           <button
             type="button"
@@ -526,6 +564,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <span>Restore Backup</span>
             <input type="file" accept=".json" onChange={handleImportJson} className="hidden" />
           </label>
+
+          {/* Repair Mistakes */}
+          <button
+            type="button"
+            onClick={handleStartRepairDryRun}
+            className="flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-[var(--ink-border)] bg-[var(--mint-soft)] hover:bg-[var(--mint)]/30 text-xs font-bold transition-all shadow-manga-sm hover:-translate-y-0.5"
+            title="Scan database for duplicated or 9-option questions, preview dry-run, and repair options"
+          >
+            <Wrench className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <span>Repair Existing Mistakes</span>
+          </button>
 
           {/* Open Data Intake Modal */}
           {onOpenDataIntake && (
@@ -566,6 +615,105 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Repair Existing Mistakes Dry-Run Modal */}
+      {isRepairModalOpen && repairPlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-[var(--bg-panel)] rounded-2xl p-6 max-w-2xl w-full border-2 border-[var(--ink-border)] space-y-4 shadow-manga-lg max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b pb-3 border-[var(--ink-border)]">
+              <div className="flex items-center gap-2">
+                <Wrench className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                <h3 className="font-display text-base font-bold text-[var(--ink)] dark:text-[var(--text-main)]">
+                  Repair Existing Mistakes (Dry Run)
+                </h3>
+              </div>
+              <button onClick={() => setIsRepairModalOpen(false)} className="p-1 hover:opacity-75">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto space-y-4 flex-1 text-xs">
+              <div className="p-3.5 rounded-xl bg-stone-100 dark:bg-stone-800/60 border border-[var(--ink-border)] flex items-center justify-between">
+                <div>
+                  <div className="font-bold text-stone-900 dark:text-stone-100">
+                    Scanned {repairPlan.totalScanned} mistake record(s)
+                  </div>
+                  <div className="text-stone-500">
+                    {repairPlan.affectedCount === 0
+                      ? 'No affected records found. All questions have clean, valid 2–5 options!'
+                      : `${repairPlan.affectedCount} record(s) will be repaired (duplicates removed, Devanagari Hindi stripped, labels normalized, answers remapped).`}
+                  </div>
+                </div>
+                <span className={`px-2.5 py-1 rounded-full font-mono font-bold text-xs ${
+                  repairPlan.affectedCount === 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                }`}>
+                  {repairPlan.affectedCount} affected
+                </span>
+              </div>
+
+              {repairPlan.previews.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="font-bold text-stone-700 dark:text-stone-300">
+                    Preview of Sample Changes (first {repairPlan.previews.length}):
+                  </h4>
+                  {repairPlan.previews.map((prev, idx) => (
+                    <div key={idx} className="p-3 rounded-xl border border-[var(--ink-border)] bg-[var(--bg-surface)] space-y-2">
+                      <div className="flex items-center justify-between font-bold">
+                        <span>{prev.mockName} — Q.{prev.questionNumber}</span>
+                        <span className="text-[11px] font-mono text-stone-500">
+                          {prev.before.optionsCount} options ➔ {prev.after.optionsCount} options
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-[11px]">
+                        <div className="p-2 rounded bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900">
+                          <span className="font-bold text-rose-700 dark:text-rose-300 block mb-1">Before:</span>
+                          <div><strong>Correct:</strong> {prev.before.correctAnswer}</div>
+                          <div><strong>Selected:</strong> {prev.before.myAnswer}</div>
+                        </div>
+                        <div className="p-2 rounded bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900">
+                          <span className="font-bold text-emerald-700 dark:text-emerald-300 block mb-1">After:</span>
+                          <div><strong>Correct:</strong> {prev.after.correctAnswer}</div>
+                          <div><strong>Selected:</strong> {prev.after.myAnswer}</div>
+                        </div>
+                      </div>
+                      {prev.needsReview && (
+                        <div className="text-[11px] font-semibold text-amber-700">
+                          ⚠️ Flagged for review: {prev.reason}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-[var(--ink-border)] flex items-center justify-between">
+              <span className="text-[11px] text-stone-500">
+                Automatic JSON backup is exported before any database changes are saved. Safe to run repeatedly.
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsRepairModalOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-[var(--ink-border)] bg-[var(--bg-surface)] text-xs font-bold"
+                >
+                  Close
+                </button>
+                {repairPlan.affectedCount > 0 && (
+                  <button
+                    type="button"
+                    disabled={isRepairing}
+                    onClick={handleApplyRepair}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-manga-sm disabled:opacity-50"
+                  >
+                    {isRepairing ? 'Repairing...' : 'Backup & Apply Repairs'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Confirmation Modal */}
       {confirmClearModal && (
