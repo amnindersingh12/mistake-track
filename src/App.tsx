@@ -18,8 +18,11 @@ import {
   Inbox
 } from 'lucide-react';
 import { MangaIconPlus, MangaIconSearch, MangaIconInbox } from './components/MangaIcons';
+import { ExamSwitcher } from './exams/ExamSwitcher';
+import { switchProfile } from './db/db';
 
 // Route-level code-splitting
+const HomeView = React.lazy(() => import('./components/HomeView').then((m) => ({ default: m.HomeView })));
 const DashboardView = React.lazy(() => import('./components/DashboardView').then((m) => ({ default: m.DashboardView })));
 const MocksView = React.lazy(() => import('./components/MocksView').then((m) => ({ default: m.MocksView })));
 const MistakesView = React.lazy(() => import('./components/MistakesView').then((m) => ({ default: m.MistakesView })));
@@ -27,23 +30,45 @@ const PapersView = React.lazy(() => import('./components/PapersView').then((m) =
 const ImportInboxView = React.lazy(() => import('./components/ImportInboxView').then((m) => ({ default: m.ImportInboxView })));
 const ReviewQueueView = React.lazy(() => import('./components/ReviewQueueView').then((m) => ({ default: m.ReviewQueueView })));
 const PlannerView = React.lazy(() => import('./components/PlannerView').then((m) => ({ default: m.PlannerView })));
+const StudyPlannerView = React.lazy(() => import('./components/StudyPlannerView').then((m) => ({ default: m.StudyPlannerView })));
+const SyllabusView = React.lazy(() => import('./components/SyllabusView').then((m) => ({ default: m.SyllabusView })));
+const PYQView = React.lazy(() => import('./components/PYQView').then((m) => ({ default: m.PYQView })));
+const OverlapMap = React.lazy(() => import('./components/OverlapMap').then((m) => ({ default: m.OverlapMap })));
+const NotesView = React.lazy(() => import('./components/NotesView').then((m) => ({ default: m.NotesView })));
+const PatternsView = React.lazy(() => import('./components/PatternsView').then((m) => ({ default: m.PatternsView })));
 const CheatSheetView = React.lazy(() => import('./components/CheatSheetView').then((m) => ({ default: m.CheatSheetView })));
+const FocusView = React.lazy(() => import('./components/FocusView').then((m) => ({ default: m.FocusView })));
+const QuestsView = React.lazy(() => import('./components/QuestsView').then((m) => ({ default: m.QuestsView })));
+const SkillTreeView = React.lazy(() => import('./components/SkillTreeView').then((m) => ({ default: m.SkillTreeView })));
+const AllExamsView = React.lazy(() => import('./exams/AllExamsView').then((m) => ({ default: m.AllExamsView })));
 const SettingsView = React.lazy(() => import('./components/SettingsView').then((m) => ({ default: m.SettingsView })));
 
 // Lazy-loaded dialogs & modals
 const DataIntakeModal = React.lazy(() => import('./components/DataIntakeModal').then((m) => ({ default: m.DataIntakeModal })));
 const GlobalSearchModal = React.lazy(() => import('./components/GlobalSearchModal').then((m) => ({ default: m.GlobalSearchModal })));
 const KeyboardShortcutsModal = React.lazy(() => import('./components/KeyboardShortcutsModal').then((m) => ({ default: m.KeyboardShortcutsModal })));
+const CommandPalette = React.lazy(() => import('./components/CommandPalette').then((m) => ({ default: m.CommandPalette })));
+const BossBattleModal = React.lazy(() => import('./components/BossBattleModal').then((m) => ({ default: m.BossBattleModal })));
 
 export function App() {
   const { theme, toggleTheme } = useTheme();
   const shouldReduceMotion = useReducedMotion();
-  const [currentTab, setCurrentTab] = useState<NavTab>('dashboard');
+  const [currentTab, setCurrentTab] = useState<NavTab>('home');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [isDataIntakeOpen, setIsDataIntakeOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isBossBattleOpen, setIsBossBattleOpen] = useState(false);
+  const [isCompactDensity, setIsCompactDensity] = useState<boolean>(() => {
+    return localStorage.getItem('studybridge_compact_density') === 'true';
+  });
+  const [focusSessionConfig, setFocusSessionConfig] = useState<{
+    title: string;
+    type: any;
+    durationMinutes: number;
+  } | null>(null);
   const [studyBridgePayload, setStudyBridgePayload] = useState<StudyBridgeImportPayload | null>(null);
 
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'info' | 'warning' } | null>(null);
@@ -181,18 +206,45 @@ export function App() {
     reloadData();
   }, [reloadData]);
 
+  const handleSelectExam = async (examId: string, stageId?: string) => {
+    try {
+      const updated = await switchProfile(examId, stageId);
+      setSettings(updated);
+      await reloadData();
+      showToast(`Switched active exam to ${updated.examName}`, 'info');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to switch exam', 'warning');
+    }
+  };
+
+  const toggleCompactDensity = () => {
+    setIsCompactDensity((prev) => {
+      const next = !prev;
+      localStorage.setItem('studybridge_compact_density', String(next));
+      return next;
+    });
+  };
+
   // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // 1. Omni Search: Cmd+K / Ctrl+K
+      // 1. Omni Search / Command Palette: Cmd+K / Ctrl+K
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setIsSearchOpen((prev) => !prev);
+        setIsCommandPaletteOpen((prev) => !prev);
         return;
       }
 
       // 2. Escape closes topmost open overlay
       if (e.key === 'Escape') {
+        if (isCommandPaletteOpen) {
+          setIsCommandPaletteOpen(false);
+          return;
+        }
+        if (isBossBattleOpen) {
+          setIsBossBattleOpen(false);
+          return;
+        }
         if (isShortcutsOpen) {
           setIsShortcutsOpen(false);
           return;
@@ -235,8 +287,17 @@ export function App() {
         return;
       }
 
-      // 5. Number keys 1-9 for Instant Tab Switching
+      // 5. Hotkeys for Instant Tab Switching
       const tabKeyMap: Record<string, NavTab> = {
+        h: 'home',
+        q: 'quests',
+        r: 'review',
+        f: 'focus',
+        p: 'pyq',
+        s: 'syllabus',
+        o: 'overlap',
+        n: 'notes',
+        b: 'patterns',
         '1': 'dashboard',
         '2': 'mocks',
         '3': 'papers',
@@ -248,22 +309,22 @@ export function App() {
         '9': 'settings'
       };
 
-      if (tabKeyMap[e.key]) {
+      const lowerKey = e.key.toLowerCase();
+      if (tabKeyMap[lowerKey]) {
         e.preventDefault();
-        setCurrentTab(tabKeyMap[e.key]);
+        setCurrentTab(tabKeyMap[lowerKey]);
         return;
       }
 
-      // 6. Action hotkeys: N or M for Mistake, I for Intake, T for Theme
-      const key = e.key.toLowerCase();
-      if (key === 'n' || key === 'm') {
+      // 6. Action hotkeys: M for Mistake, I for Intake, T for Theme
+      if (lowerKey === 'm') {
         e.preventDefault();
         setCurrentTab('mistakes');
         setIsQuickAddOpen(true);
-      } else if (key === 'i') {
+      } else if (lowerKey === 'i') {
         e.preventDefault();
         setIsDataIntakeOpen(true);
-      } else if (key === 't') {
+      } else if (lowerKey === 't') {
         e.preventDefault();
         toggleTheme();
       }
@@ -272,6 +333,8 @@ export function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
+    isCommandPaletteOpen,
+    isBossBattleOpen,
     isShortcutsOpen,
     isSearchOpen,
     isDataIntakeOpen,
@@ -331,11 +394,13 @@ export function App() {
         currentTab={currentTab}
         onSelectTab={(tab) => setCurrentTab(tab)}
         onOpenQuickAdd={() => setIsQuickAddOpen(true)}
-        onOpenSearch={() => setIsSearchOpen(true)}
+        onOpenSearch={() => setIsCommandPaletteOpen(true)}
         isOpenMobile={isMobileNavOpen}
         onCloseMobile={() => setIsMobileNavOpen(false)}
         pendingReviewCount={pendingReviewCount}
         masteredCount={masteredCount}
+        isCompact={isCompactDensity}
+        onToggleCompact={toggleCompactDensity}
       />
 
       {/* Main Content Area */}
@@ -350,25 +415,29 @@ export function App() {
             >
               <Menu className="w-5 h-5" />
             </button>
-            <div className="flex items-center gap-2 truncate">
-              <span className="font-display text-xs font-black px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-subtle)] shadow-manga-sm hidden sm:inline-block truncate max-w-[200px]">
-                {settings.examName}
-              </span>
-              <span className="text-xs text-[var(--text-muted)] font-mono hidden md:inline-block truncate">
+            <div className="flex items-center gap-2 min-w-0">
+              <ExamSwitcher
+                currentExamId={settings.currentExamId || 'gate-cs'}
+                currentStageId={settings.currentStageId}
+                onSelectExam={handleSelectExam}
+                onSelectStage={(stageId) => handleSelectExam(settings.currentExamId || 'gate-cs', stageId)}
+                compact
+              />
+              <span className="text-xs text-[var(--text-muted)] font-mono hidden xl:inline-block truncate">
                 Target: <strong className="text-[var(--text-primary)]">{settings.targetScore}</strong> • Cutoff: <strong className="text-[var(--text-primary)]">{settings.overallCutoff}</strong>
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-            {/* Global Search Header Button */}
+            {/* Command Palette Trigger Button */}
             <button
-              onClick={() => setIsSearchOpen(true)}
+              onClick={() => setIsCommandPaletteOpen(true)}
               className="hidden sm:inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border-2 border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--action-primary)] text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all shadow-xs"
-              title="Search mocks, mistakes, papers, tasks (Cmd+K)"
+              title="Command Palette (Cmd+K)"
             >
               <MangaIconSearch className="w-3.5 h-3.5 text-[var(--action-primary)]" />
-              <span>Search...</span>
+              <span>Commands...</span>
               <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-panel)]">
                 ⌘K
               </kbd>
@@ -465,6 +534,18 @@ export function App() {
                   </div>
                 }
               >
+                {currentTab === 'home' && (
+                  <HomeView
+                    onNavigateTab={(tab) => setCurrentTab(tab as NavTab)}
+                    onOpenQuickAdd={() => {
+                      setCurrentTab('mistakes');
+                      setIsQuickAddOpen(true);
+                    }}
+                    onOpenFocus={() => setCurrentTab('focus')}
+                    onOpenBossBattle={() => setIsBossBattleOpen(true)}
+                  />
+                )}
+
                 {currentTab === 'dashboard' && (
                   <DashboardView
                     mocks={mocks}
@@ -537,10 +618,80 @@ export function App() {
                   />
                 )}
 
+                {currentTab === 'study-planner' && (
+                  <StudyPlannerView
+                    mistakes={mistakes}
+                    onStartFocus={(session) => {
+                      setFocusSessionConfig(session);
+                      setCurrentTab('focus');
+                    }}
+                    onNavigateTab={(tab) => setCurrentTab(tab as NavTab)}
+                  />
+                )}
+
+                {currentTab === 'syllabus' && (
+                  <SyllabusView
+                    initialExamId={settings.currentExamId || 'gate-cs'}
+                    initialStage={settings.currentStageId}
+                    onNavigate={(tab) => setCurrentTab(tab as NavTab)}
+                  />
+                )}
+
+                {currentTab === 'pyq' && (
+                  <PYQView
+                    initialExamId={settings.currentExamId || 'all'}
+                    onNavigate={(tab) => setCurrentTab(tab as NavTab)}
+                  />
+                )}
+
+                {currentTab === 'overlap' && (
+                  <OverlapMap
+                    onNavigate={(tab) => setCurrentTab(tab as NavTab)}
+                  />
+                )}
+
+                {currentTab === 'notes' && (
+                  <NotesView
+                    onRefresh={reloadData}
+                  />
+                )}
+
+                {currentTab === 'patterns' && (
+                  <PatternsView
+                    onRefresh={reloadData}
+                  />
+                )}
+
                 {currentTab === 'cheatsheet' && (
                   <CheatSheetView
                     mistakes={mistakes}
                     settings={settings}
+                  />
+                )}
+
+                {currentTab === 'focus' && (
+                  <FocusView
+                    initialSessionTitle={focusSessionConfig?.title}
+                    initialSessionType={focusSessionConfig?.type}
+                    initialDurationMinutes={focusSessionConfig?.durationMinutes}
+                  />
+                )}
+
+                {currentTab === 'quests' && (
+                  <QuestsView
+                    onOpenBossBattle={() => setIsBossBattleOpen(true)}
+                    onNavigateTab={(tab) => setCurrentTab(tab as NavTab)}
+                  />
+                )}
+
+                {currentTab === 'skill-tree' && (
+                  <SkillTreeView />
+                )}
+
+                {currentTab === 'all-exams' && (
+                  <AllExamsView
+                    onSelectExam={handleSelectExam}
+                    onNavigateToSettings={() => setCurrentTab('settings')}
                   />
                 )}
 
@@ -557,6 +708,39 @@ export function App() {
           </AnimatePresence>
         </main>
       </div>
+
+      {/* Command Palette (Cmd+K) */}
+      <Suspense fallback={null}>
+        <CommandPalette
+          isOpen={isCommandPaletteOpen}
+          onClose={() => setIsCommandPaletteOpen(false)}
+          onSelectTab={(tab) => {
+            setCurrentTab(tab);
+            setIsCommandPaletteOpen(false);
+          }}
+          onOpenQuickAdd={() => {
+            setCurrentTab('mistakes');
+            setIsQuickAddOpen(true);
+            setIsCommandPaletteOpen(false);
+          }}
+          onToggleTheme={toggleTheme}
+          isCompactDensity={isCompactDensity}
+          onToggleDensity={toggleCompactDensity}
+          onProfileChanged={() => reloadData()}
+        />
+      </Suspense>
+
+      {/* Boss Battle Modal */}
+      <Suspense fallback={null}>
+        <BossBattleModal
+          isOpen={isBossBattleOpen}
+          onClose={() => setIsBossBattleOpen(false)}
+          onVictory={(xp) => {
+            showToast(`Boss Defeated! +${xp} XP`, 'success');
+            setIsBossBattleOpen(false);
+          }}
+        />
+      </Suspense>
 
       {/* Global Search Modal */}
       <Suspense fallback={null}>

@@ -1,16 +1,18 @@
 {
-  "0": "index.ts",
-  "5": "ref_fs",
+  "0": "QuestionRenderer.tsx",
+  "5": "ScreenshotInput.tsx",
   "11": "package.json",
+  "12": "testbookAdapter.ts",
   "13": "xpEngine.ts",
-  "16": "mockValidation.ts",
-  "17": "exportImport.ts",
-  "30": "@testing-library/react",
-  "32": "ScreenshotInput.tsx",
+  "16": "topicGraph.ts",
+  "17": "main",
+  "19": "StudyBridgeQueueManager",
+  "30": "vitest",
   "33": "AmbientAudioSynthesizer",
-  "34": "QuestionRenderer.tsx",
+  "34": "index.ts",
   "35": "package.json",
   "42": "bookmarklet.js",
   "43": "tailwind.config.js",
-  "44": "@testing-library/user-event@^14.6.8"
+  "48": "puppeteer-core",
+  "49": "test_visual_qa.cjs"
 }

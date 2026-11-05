@@ -507,6 +507,8 @@ export const DEFAULT_PROFILES: ExamProfile[] = [
 export const DEFAULT_SETTINGS: ExamSettings = {
   id: 'current',
   examName: 'Competitive Exam',
+  currentExamId: 'gate-cs',
+  currentStageId: 'cbt',
   totalTimeMinutes: 120,
   targetScore: 100,
   overallCutoff: 60,
@@ -809,19 +811,35 @@ export async function ensureSettings(): Promise<ExamSettings> {
 /**
  * Switch the active exam profile without touching mocks or mistakes.
  */
-export async function switchProfile(profileId: string): Promise<ExamSettings> {
+export async function switchProfile(profileId: string, stageId?: string): Promise<ExamSettings> {
   const profile = await db.profiles.get(profileId);
   if (!profile) {
     throw new Error(`Profile with id "${profileId}" not found`);
   }
 
+  // Update isDefault across all profiles
+  const allProfiles = await db.profiles.toArray();
+  for (const p of allProfiles) {
+    if (p.id === profileId && !p.isDefault) {
+      await db.profiles.update(p.id, { isDefault: true });
+    } else if (p.id !== profileId && p.isDefault) {
+      await db.profiles.update(p.id, { isDefault: false });
+    }
+  }
+
+  const activeStage = stageId
+    ? profile.stages?.find(s => s.id === stageId) || profile.stages?.[0]
+    : profile.stages?.[0];
+
   const updatedSettings: ExamSettings = {
     id: 'current',
     examName: profile.examName,
-    totalTimeMinutes: profile.totalTimeMinutes || profile.stages?.[0]?.durationMinutes || 180,
+    currentExamId: profile.id,
+    currentStageId: activeStage?.id || 'cbt',
+    totalTimeMinutes: profile.totalTimeMinutes || activeStage?.durationMinutes || 180,
     targetScore: profile.targetScore || 65,
-    overallCutoff: profile.overallCutoff || profile.stages?.[0]?.cutoffMarks || 28,
-    sections: profile.sections || profile.stages?.[0]?.sections || [],
+    overallCutoff: profile.overallCutoff || activeStage?.cutoffMarks || 28,
+    sections: activeStage?.sections?.length ? activeStage.sections : (profile.sections || []),
     errorTypes: profile.errorTypes || [...CS_ERROR_TYPES]
   };
 

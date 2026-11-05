@@ -46,6 +46,8 @@ export interface SectionConfig {
 export interface ExamSettings {
   id: string; // 'current'
   examName: string;
+  currentExamId?: string;
+  currentStageId?: string;
   totalTimeMinutes: number;
   targetScore: number;
   overallCutoff: number;
