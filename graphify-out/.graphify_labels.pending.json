@@ -1,15 +1,16 @@
 {
-  "0": "index.ts",
-  "5": "test_visual_qa.cjs",
+  "0": "MistakeEntry",
+  "5": "ref_fs",
   "11": "package.json",
-  "13": "ref_path",
+  "13": "topicGraph.ts",
   "16": "vitest",
-  "17": "exportImport.ts",
+  "17": "index.ts",
   "30": "@testing-library/react",
-  "32": "ScreenshotInput.tsx",
+  "32": "@testing-library/user-event@^14.6.8",
   "33": "puppeteer-core",
-  "34": "QuestionRenderer.tsx",
+  "34": "PYQView.tsx",
   "35": "@types/katex@^0.16.8",
   "42": "bookmarklet.js",
-  "43": "tailwind.config.js"
+  "43": "tailwind.config.js",
+  "44": "typescript@^5.8.2"
 }
