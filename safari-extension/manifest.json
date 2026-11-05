@@ -4,7 +4,6 @@
   "version": "1.0.0",
   "description": "Securely capture user-selected Testbook exam results and transfer them to the local study application.",
   "action": {
-    "default_popup": "popup/popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",
       "32": "icons/icon-32.png",

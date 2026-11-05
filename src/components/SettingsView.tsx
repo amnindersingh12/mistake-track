@@ -201,61 +201,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {/* Main Settings Form */}
       <form onSubmit={handleSave} className="space-y-6">
-        {/* Exam Profile Presets */}
-        <div className="p-5 bg-[var(--bg-panel)] rounded-2xl border-2 border-[var(--ink-border)] shadow-manga space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <h3 className="font-display text-sm font-bold text-[var(--ink)] dark:text-[var(--text-main)]">
-                Exam Profile Presets
-              </h3>
-              <p className="text-xs text-[var(--text-muted)]">
-                Switch exam structures and section marking rules instantly without losing your recorded mocks or mistakes.
-              </p>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {DEFAULT_PROFILES.map((profile) => {
-              const isSelected = form.examName === profile.examName;
-              return (
-                <button
-                  key={profile.id}
-                  type="button"
-                  onClick={() => {
-                    setForm({
-                      ...form,
-                      examName: profile.examName,
-                      totalTimeMinutes: profile.totalTimeMinutes,
-                      targetScore: profile.targetScore,
-                      overallCutoff: profile.overallCutoff,
-                      sections: JSON.parse(JSON.stringify(profile.sections)),
-                      errorTypes: [...profile.errorTypes]
-                    });
-                    setActiveSectionTab(profile.sections[0]?.id || 'quant');
-                  }}
-                  className={`p-3.5 rounded-xl text-left border-2 transition-all ${
-                    isSelected
-                      ? 'border-[var(--ink-border)] bg-[var(--peach)] text-[var(--ink)] shadow-manga-sm'
-                      : 'border-[var(--ink-border)] bg-[var(--bg-surface)] hover:bg-[var(--bg-panel)] text-[var(--text-main)]'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-xs">{profile.name}</span>
-                    {isSelected && (
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--ink)] text-[var(--bg-panel)] font-bold">
-                        ACTIVE
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-[11px] opacity-80 mt-1 space-y-0.5 font-medium">
-                    <p>{profile.sections.length} Sections • {profile.totalTimeMinutes} mins</p>
-                    <p>Target: {profile.targetScore} • Cutoff: {profile.overallCutoff}</p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
         {/* Global Exam Info */}
         <div className="p-5 bg-[var(--bg-panel)] rounded-2xl border-2 border-[var(--ink-border)] shadow-manga space-y-4">
           <h3 className="font-display text-sm font-bold text-[var(--ink)] dark:text-[var(--text-main)]">

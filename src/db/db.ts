@@ -57,6 +57,21 @@ export const DEFAULT_ENGLISH_TOPICS = [
   'Para Completion'
 ];
 
+export const DEFAULT_CS_TOPICS = [
+  'Data Structures',
+  'Algorithms',
+  'Operating Systems',
+  'DBMS',
+  'Computer Networks',
+  'Theory of Computation',
+  'Compiler Design',
+  'Digital Logic',
+  'Computer Architecture',
+  'Software Engineering',
+  'Discrete Mathematics',
+  'Programming (C/C++/Python)'
+];
+
 export const DEFAULT_GENERAL_AWARENESS_TOPICS = [
   'Current Affairs',
   'Banking & Financial Awareness',
@@ -85,6 +100,59 @@ export const DEFAULT_ERROR_TYPES = [
 ];
 
 export const DEFAULT_PROFILES: ExamProfile[] = [
+  {
+    id: 'competitive-cs',
+    name: 'Competitive Exam (CS)',
+    examName: 'Competitive Exam',
+    totalTimeMinutes: 120,
+    targetScore: 100,
+    overallCutoff: 60,
+    isDefault: true,
+    createdAt: new Date().toISOString(),
+    errorTypes: [...DEFAULT_ERROR_TYPES],
+    sections: [
+      {
+        id: 'quant',
+        name: 'Quantitative Aptitude',
+        totalQuestions: 25,
+        marksPerCorrect: 1.0,
+        negativeMark: 0.25,
+        timeLimitMinutes: 30,
+        sectionalCutoff: 10,
+        topics: [...DEFAULT_QUANT_TOPICS]
+      },
+      {
+        id: 'reasoning',
+        name: 'Reasoning',
+        totalQuestions: 25,
+        marksPerCorrect: 1.0,
+        negativeMark: 0.25,
+        timeLimitMinutes: 30,
+        sectionalCutoff: 10,
+        topics: [...DEFAULT_REASONING_TOPICS]
+      },
+      {
+        id: 'english',
+        name: 'English',
+        totalQuestions: 25,
+        marksPerCorrect: 1.0,
+        negativeMark: 0.25,
+        timeLimitMinutes: 20,
+        sectionalCutoff: 8,
+        topics: [...DEFAULT_ENGLISH_TOPICS]
+      },
+      {
+        id: 'cs',
+        name: 'Computer Science',
+        totalQuestions: 25,
+        marksPerCorrect: 1.0,
+        negativeMark: 0.25,
+        timeLimitMinutes: 40,
+        sectionalCutoff: 10,
+        topics: [...DEFAULT_CS_TOPICS]
+      }
+    ]
+  },
   {
     id: 'sbi-po',
     name: 'SBI PO Prelims',
@@ -319,6 +387,15 @@ export const db = new MistakeNotebookDatabase();
  * Ensures initial default settings and profiles exist.
  * Preserves all user entered mocks, mistakes, papers, and tasks.
  */
+export function extractExamNameFromMock(mockName: string): string {
+  if (!mockName) return '';
+  const cleaned = mockName
+    .replace(/(?:[-_:\s]+)?(?:Mock(?:\s*Test)?|Test|Full\s*Mock|Paper)\s*#?\d+.*$/i, '')
+    .replace(/\s*-\s*$/, '')
+    .trim();
+  return cleaned || mockName;
+}
+
 export async function ensureSettings(): Promise<ExamSettings> {
   const current = await db.settings.get('current');
   
@@ -332,6 +409,42 @@ export async function ensureSettings(): Promise<ExamSettings> {
     await db.settings.put(DEFAULT_SETTINGS);
     return DEFAULT_SETTINGS;
   }
+
+  let modified = false;
+
+  // Ensure CS section is present
+  if (!current.sections.some((s) => s.id === 'cs')) {
+    current.sections.push({
+      id: 'cs',
+      name: 'Computer Science',
+      totalQuestions: 25,
+      marksPerCorrect: 1.0,
+      negativeMark: 0.25,
+      timeLimitMinutes: 40,
+      sectionalCutoff: 10,
+      topics: [...DEFAULT_CS_TOPICS]
+    });
+    modified = true;
+  }
+
+  // If there are recorded mocks, adapt exam name from latest mock if currently default
+  try {
+    const latestMock = await db.mocks.orderBy('date').last();
+    if (latestMock?.name) {
+      const derived = extractExamNameFromMock(latestMock.name);
+      if (derived && derived.length > 2 && (current.examName === 'SBI PO Prelims' || current.examName === 'Competitive Exam')) {
+        current.examName = derived;
+        modified = true;
+      }
+    }
+  } catch {
+    // Ignore mock read error during migration
+  }
+
+  if (modified) {
+    await db.settings.put(current);
+  }
+
   return current;
 }
 

@@ -669,10 +669,13 @@
 
       const optionEls = document.querySelectorAll('ul.list-unstyled li.option');
       let optIdx = 0;
+      const seenOptTexts = new Set();
       for (const opt of Array.from(optionEls)) {
         const optDesc = opt.querySelector('[ng-bind-html*="parseDesc"], .qns-view-box, label');
         const optText = cleanText(optDesc ? optDesc.textContent : '');
-        if (!optText) continue;
+        if (!optText || seenOptTexts.has(optText.toLowerCase())) continue;
+        if (options.length >= 5) break;
+        seenOptTexts.add(optText.toLowerCase());
 
         const isCorrect =
           opt.classList.contains('correct-option') ||

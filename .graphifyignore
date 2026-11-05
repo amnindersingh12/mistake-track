@@ -1,0 +1,12 @@
+# Skip images and HTML files — they need LLM keys and add little to code navigation
+screenshots/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.svg
+sampletestbook.html
+index.html
+safari-extension/popup/popup.html
+

@@ -247,6 +247,41 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
   });
 }
 
+// Auto-scan on extension icon click (bypasses popup)
+const actionApi = (typeof browser !== 'undefined' && browser.action) ? browser.action
+  : (typeof chrome !== 'undefined' && chrome.action) ? chrome.action
+  : (typeof chrome !== 'undefined' && chrome.browserAction) ? chrome.browserAction
+  : null;
+
+if (actionApi && actionApi.onClicked) {
+  actionApi.onClicked.addListener(async (tab) => {
+    if (!tab || !tab.id) return;
+    if (!isAllowedSourceUrl(tab.url)) {
+      // Not on Testbook — ignore
+      return;
+    }
+
+    // Already scanning? don't start again
+    if (activeScanState.status === 'running' || activeScanState.status === 'paused') return;
+
+    activeScanState = {
+      status: 'running',
+      tabId: tab.id,
+      current: 0,
+      total: 130,
+      section: 'Initializing...',
+      percent: 0,
+      startedAt: Date.now()
+    };
+
+    try {
+      await requestFromTab(tab.id, 'START_FULL_SCAN');
+    } catch (err) {
+      activeScanState.status = 'idle';
+    }
+  });
+}
+
 /**
  * Communicates with testbook-adapter content script on active tab,
  * injecting it on-demand if the tab was loaded before extension start.

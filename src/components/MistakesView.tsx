@@ -15,8 +15,55 @@ import {
   Image as ImageIcon,
   Sparkles,
   X,
-  AlertCircle
+  AlertCircle,
+  ChevronDown,
+  ChevronUp,
+  CheckCircle2
 } from 'lucide-react';
+
+export function parseQuestionTextAndOptions(rawText: string): {
+  prompt: string;
+  options: { label: string; text: string; isCorrect: boolean; isSelected: boolean }[];
+} {
+  if (!rawText) return { prompt: '', options: [] };
+
+  const optionsIndex = rawText.search(/\n\s*Options:\s*\n/i);
+  if (optionsIndex === -1) {
+    return { prompt: rawText, options: [] };
+  }
+
+  const prompt = rawText.slice(0, optionsIndex).trim();
+  const optionsPart = rawText.slice(optionsIndex).replace(/\n\s*Options:\s*\n/i, '');
+  const lines = optionsPart.split('\n').map((l) => l.trim()).filter(Boolean);
+
+  const parsed: { label: string; text: string; isCorrect: boolean; isSelected: boolean }[] = [];
+  const seenTexts = new Set<string>();
+
+  for (const line of lines) {
+    const isCorrect = /\[Correct\]/i.test(line);
+    const isSelected = /\[Selected\]/i.test(line);
+    const clean = line
+      .replace(/^(?:[0-9]+|[A-Za-z])[\.\)]\s*/, '')
+      .replace(/\[(?:Correct|Selected)\]/gi, '')
+      .trim();
+
+    if (!clean) continue;
+    const lower = clean.toLowerCase();
+    if (seenTexts.has(lower)) continue;
+    seenTexts.add(lower);
+
+    if (parsed.length >= 5) break; // Hard limit: never more than 5 options!
+
+    parsed.push({
+      label: String.fromCharCode(65 + parsed.length),
+      text: clean,
+      isCorrect,
+      isSelected
+    });
+  }
+
+  return { prompt: prompt || rawText, options: parsed };
+}
 
 interface MistakesViewProps {
   mistakes: MistakeEntry[];
@@ -58,6 +105,7 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
 
   // Preview Image Modal
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [collapsedMistakeIds, setCollapsedMistakeIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     if (isQuickAddOpenDirectly) {
@@ -440,7 +488,7 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
       </div>
 
       {/* Filter / Search Bar */}
-      <div className="manga-panel p-4 bg-[var(--bg-panel)] rounded-2xl border-3 border-[var(--ink-border)] shadow-manga space-y-3">
+      <div className="manga-panel p-4 bg-[var(--bg-panel)] rounded-2xl border-3 border-[var(--ink-border)] shadow-manga space-y-3.5">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-2.5" />
@@ -453,7 +501,7 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
             />
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <select
               aria-label="Filter by section"
               value={filterSection}
@@ -576,6 +624,93 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
           </div>
         </div>
 
+        {/* Interactive Clickable Section Pills */}
+        <div className="space-y-1.5 pt-1 border-t border-[var(--ink-border)]/30">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              Click Section to Filter:
+            </span>
+            {(filterSection !== 'all' || filterStatus !== 'all' || filterResultType !== 'all' || filterErrorType !== 'all' || filterTopic !== 'all' || filterTag !== 'all') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterSection('all');
+                  setFilterTopic('all');
+                  setFilterErrorType('all');
+                  setFilterStatus('all');
+                  setFilterResultType('all');
+                  setFilterTag('all');
+                }}
+                className="text-[11px] font-bold text-[var(--sakura)] hover:underline"
+              >
+                Reset All Filters
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setFilterSection('all');
+                setFilterTopic('all');
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border-2 cursor-pointer ${
+                filterSection === 'all'
+                  ? 'bg-[var(--sakura)] text-[var(--ink)] border-[var(--ink-border)] shadow-manga-sm scale-[1.02]'
+                  : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--ink-border)]/50 hover:border-[var(--ink-border)] hover:text-[var(--text-main)]'
+              }`}
+            >
+              All Sections ({mistakes.length})
+            </button>
+            {settings.sections.map((s) => {
+              const count = mistakes.filter((m) => m.sectionId === s.id).length;
+              const isActive = filterSection === s.id;
+              return (
+                <button
+                  type="button"
+                  key={s.id}
+                  onClick={() => {
+                    setFilterSection(isActive ? 'all' : s.id);
+                    setFilterTopic('all');
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border-2 flex items-center gap-1.5 cursor-pointer ${
+                    isActive
+                      ? 'bg-[var(--peach)] text-[var(--ink)] border-[var(--ink-border)] shadow-manga-sm scale-[1.02]'
+                      : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--ink-border)]/50 hover:border-[var(--ink-border)] hover:text-[var(--text-main)]'
+                  }`}
+                >
+                  <span>{s.name}</span>
+                  <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-md ${isActive ? 'bg-[var(--ink)] text-[var(--bg-panel)] font-bold' : 'bg-[var(--bg-panel)]'}`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Clickable Status & Result Badges */}
+        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-[var(--ink-border)]/20">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Status:</span>
+          {(['all', 'New', 'Reviewing', 'Mastered'] as const).map((st) => {
+            const isActive = filterStatus === st;
+            return (
+              <button
+                type="button"
+                key={st}
+                onClick={() => setFilterStatus(st)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                  isActive
+                    ? 'bg-[var(--ink)] text-[var(--bg-panel)] border-[var(--ink-border)] shadow-sm'
+                    : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--ink-border)]/40 hover:border-[var(--ink-border)]'
+                }`}
+              >
+                {st === 'all' ? 'All' : st === 'Mastered' ? 'Mastered (Defeated)' : st}
+              </button>
+            );
+          })}
+        </div>
+
         <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)] pt-1 border-t border-[var(--ink-border)]/40 font-mono">
           <span>Showing {filteredMistakes.length} of {mistakes.length} mistakes</span>
           {searchQuery && (
@@ -608,104 +743,265 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
         </div>
       ) : (
         <div className="space-y-4">
-          {filteredMistakes.map((m) => (
-            <div
-              key={m.id}
-              className="manga-panel p-5 bg-[var(--bg-panel)] rounded-2xl border-3 border-[var(--ink-border)] shadow-manga space-y-3.5"
-            >
-              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 border-b-2 border-[var(--ink-border)] pb-3">
-                <div className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="px-2 py-0.5 rounded-md bg-[var(--sakura)] text-[var(--ink)] border border-[var(--ink-border)] text-xs font-bold">
-                      {m.sectionName}
+          {filteredMistakes.map((m) => {
+            const isCollapsed = m.id ? collapsedMistakeIds.has(m.id) : false;
+            const parsedQuestion = parseQuestionTextAndOptions(m.questionText);
+
+            return (
+              <div
+                key={m.id}
+                className="manga-panel p-5 bg-[var(--bg-panel)] rounded-2xl border-3 border-[var(--ink-border)] shadow-manga space-y-3.5 transition-all"
+              >
+                {/* Clickable Header with Section, Topic, Status, and Controls */}
+                <div
+                  className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 border-b-2 border-[var(--ink-border)] pb-3 cursor-pointer select-none"
+                  onClick={() => {
+                    if (!m.id) return;
+                    setCollapsedMistakeIds((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(m.id!)) next.delete(m.id!);
+                      else next.add(m.id!);
+                      return next;
+                    });
+                  }}
+                >
+                  <div className="space-y-1 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Clickable Section Badge */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFilterSection(m.sectionId);
+                          setFilterTopic('all');
+                        }}
+                        className="px-2.5 py-0.5 rounded-md bg-[var(--sakura)] text-[var(--ink)] border border-[var(--ink-border)] text-xs font-bold hover:brightness-105 hover:scale-105 transition-all cursor-pointer"
+                        title={`Filter by ${m.sectionName}`}
+                      >
+                        {m.sectionName}
+                      </button>
+
+                      {/* Clickable Topic Badge */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFilterSection(m.sectionId);
+                          setFilterTopic(m.topic);
+                        }}
+                        className="font-display text-xs font-bold text-[var(--ink)] dark:text-[var(--text-main)] hover:underline cursor-pointer"
+                        title={`Filter by ${m.topic}`}
+                      >
+                        {m.topic} (Q#{m.questionNumber})
+                      </button>
+
+                      {/* Clickable Status Badge */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFilterStatus(m.status);
+                        }}
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded border border-[var(--ink-border)] hover:scale-105 transition-all cursor-pointer ${
+                          m.status === 'Mastered'
+                            ? 'bg-[var(--mint)] text-[var(--ink)]'
+                            : 'bg-[var(--peach)] text-[var(--ink)]'
+                        }`}
+                        title={`Filter by status ${m.status}`}
+                      >
+                        {m.status === 'Mastered' ? 'Defeated (Mastered)' : `${m.status} (${m.interval}d)`}
+                      </button>
+                    </div>
+
+                    <p className="text-[11px] text-[var(--text-muted)] font-mono">
+                      From: {m.mockId || m.paperId ? m.mockName : 'External / unlinked'} • Spent {m.timeSpentSeconds}s (Ideal: {m.idealTimeSeconds}s)
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-xs text-[var(--text-muted)] p-1 hover:text-[var(--text-main)]">
+                      {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
                     </span>
-                    <span className="font-display text-xs font-bold text-[var(--ink)] dark:text-[var(--text-main)]">
-                      {m.topic} (Q#{m.questionNumber})
-                    </span>
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded border border-[var(--ink-border)] ${
-                        m.status === 'Mastered'
-                          ? 'bg-[var(--mint)] text-[var(--ink)]'
-                          : 'bg-[var(--peach)] text-[var(--ink)]'
-                      }`}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEdit(m);
+                      }}
+                      className="p-1.5 rounded-lg border border-[var(--ink-border)] bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text-main)] cursor-pointer"
+                      title="Edit Mistake"
+                      aria-label="Edit Mistake"
                     >
-                      {m.status === 'Mastered' ? 'Defeated (Mastered)' : `${m.status} (${m.interval}d)`}
-                    </span>
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        m.id && handleDelete(m.id);
+                      }}
+                      className="p-1.5 rounded-lg border border-[var(--ink-border)] bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-rose-600 cursor-pointer"
+                      title="Delete Mistake"
+                      aria-label="Delete Mistake"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                  <p className="text-[11px] text-[var(--text-muted)] font-mono">
-                    From: {m.mockId || m.paperId ? m.mockName : 'External / unlinked'} • Spent {m.timeSpentSeconds}s (Ideal: {m.idealTimeSeconds}s)
-                  </p>
                 </div>
 
-                <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    onClick={() => openEdit(m)}
-                    className="p-1.5 rounded-lg border border-[var(--ink-border)] bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text-main)]"
-                    title="Edit Mistake"
-                    aria-label="Edit Mistake"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => m.id && handleDelete(m.id)}
-                    className="p-1.5 rounded-lg border border-[var(--ink-border)] bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-rose-600"
-                    title="Delete Mistake"
-                    aria-label="Delete Mistake"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                {/* Error Types Badges (Always Clickable) */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] font-bold text-[var(--text-muted)]">Cause:</span>
+                  {m.errorTypes.map((err) => (
+                    <button
+                      type="button"
+                      key={err}
+                      onClick={() => setFilterErrorType(err)}
+                      className="text-[11px] px-2 py-0.5 rounded-md bg-[var(--bg-surface)] border border-[var(--ink-border)] font-bold text-[var(--ink)] dark:text-[var(--text-main)] hover:bg-[var(--sakura)] hover:text-[var(--ink)] hover:scale-105 transition-all cursor-pointer"
+                      title={`Filter by error: ${err}`}
+                    >
+                      {err}
+                    </button>
+                  ))}
+                  {m.tags && m.tags.map((tag) => (
+                    <button
+                      type="button"
+                      key={tag}
+                      onClick={() => setFilterTag(tag)}
+                      className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--bg-surface)] border border-[var(--ink-border)]/50 text-[var(--text-muted)] hover:text-[var(--text-main)] cursor-pointer"
+                    >
+                      #{tag}
+                    </button>
+                  ))}
                 </div>
-              </div>
 
-              {/* Error Types Badges */}
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] font-bold text-[var(--text-muted)]">Cause:</span>
-                {m.errorTypes.map((err) => (
-                  <span
-                    key={err}
-                    className="text-[11px] px-2 py-0.5 rounded-md bg-[var(--bg-surface)] border border-[var(--ink-border)] font-bold text-[var(--ink)] dark:text-[var(--text-main)]"
-                  >
-                    {err}
-                  </span>
-                ))}
-              </div>
+                {!isCollapsed && (
+                  <>
+                    {/* Question Text, Cleaned Options (capped at 5, no 9 options bug) */}
+                    <div className="p-4 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] text-xs space-y-3">
+                      <p className="font-medium whitespace-pre-wrap leading-relaxed text-[var(--ink)] dark:text-[var(--text-main)]">
+                        {parsedQuestion.prompt}
+                      </p>
 
-              {/* Question Text & Screenshot Image */}
-              <div className="p-3.5 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] text-xs space-y-2">
-                <p className="font-medium whitespace-pre-wrap leading-relaxed">{m.questionText}</p>
-                {m.questionImage && (
-                  <div
-                    onClick={() => setPreviewImage(m.questionImage || null)}
-                    className="cursor-pointer border border-[var(--ink-border)] rounded-lg max-h-48 overflow-hidden max-w-md"
-                  >
-                    <img src={m.questionImage} alt="Mistake screenshot" className="w-full h-full object-contain" />
-                  </div>
+                      {/* Display neat options grid if options were parsed (Max 5, deduplicated) */}
+                      {parsedQuestion.options.length > 0 && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-[var(--ink-border)]/30">
+                          {parsedQuestion.options.map((opt) => {
+                            const isMyAns = opt.isSelected || m.myAnswer.toLowerCase().includes(opt.text.toLowerCase()) || m.myAnswer.toLowerCase() === `option ${opt.label.toLowerCase()}` || m.myAnswer.toLowerCase() === opt.label.toLowerCase();
+                            const isCorrectAns = opt.isCorrect || m.correctAnswer.toLowerCase().includes(opt.text.toLowerCase()) || m.correctAnswer.toLowerCase() === `option ${opt.label.toLowerCase()}` || m.correctAnswer.toLowerCase() === opt.label.toLowerCase();
+
+                            return (
+                              <div
+                                key={opt.label}
+                                className={`p-2.5 rounded-xl border-2 text-xs flex items-start gap-2 transition-all ${
+                                  isCorrectAns
+                                    ? 'bg-emerald-50/70 dark:bg-emerald-950/40 border-emerald-500 text-emerald-950 dark:text-emerald-100 font-semibold'
+                                    : isMyAns
+                                    ? 'bg-rose-50/70 dark:bg-rose-950/40 border-rose-500 text-rose-950 dark:text-rose-100 font-semibold'
+                                    : 'bg-[var(--bg-panel)] border-[var(--ink-border)]/60 text-[var(--text-main)]'
+                                }`}
+                              >
+                                <span
+                                  className={`font-mono font-bold px-1.5 py-0.5 rounded text-[10px] shrink-0 ${
+                                    isCorrectAns
+                                      ? 'bg-emerald-500 text-white'
+                                      : isMyAns
+                                      ? 'bg-rose-500 text-white'
+                                      : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border border-[var(--ink-border)]'
+                                  }`}
+                                >
+                                  {opt.label}
+                                </span>
+                                <span className="flex-1 leading-snug">{opt.text}</span>
+                                {isCorrectAns && (
+                                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 shrink-0">
+                                    ✓ Correct
+                                  </span>
+                                )}
+                                {isMyAns && !isCorrectAns && (
+                                  <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 shrink-0">
+                                    ✗ Your Ans
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {m.questionImage && (
+                        <div
+                          onClick={() => setPreviewImage(m.questionImage || null)}
+                          className="cursor-pointer border border-[var(--ink-border)] rounded-lg max-h-48 overflow-hidden max-w-md"
+                        >
+                          <img src={m.questionImage} alt="Mistake screenshot" className="w-full h-full object-contain" />
+                        </div>
+                      )}
+
+                      {/* Answer Badges */}
+                      <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-[var(--ink-border)]/40 text-xs font-mono">
+                        <span className="px-2.5 py-1 rounded-lg bg-rose-500/10 border border-rose-500/40 text-rose-600 dark:text-rose-400 font-bold">
+                          My Answer: {m.myAnswer}
+                        </span>
+                        <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/40 text-emerald-600 dark:text-emerald-400 font-bold">
+                          Correct Answer: {m.correctAnswer}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Beautified Solution & Analysis Breakdown */}
+                    <div className="space-y-2.5 text-xs">
+                      {/* What Went Wrong Card */}
+                      <div className="p-3.5 rounded-xl bg-amber-500/10 dark:bg-amber-950/30 border-2 border-amber-500/40 space-y-1">
+                        <div className="flex items-center gap-1.5 font-bold text-amber-700 dark:text-amber-300">
+                          <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
+                          <span className="uppercase tracking-wider text-[11px]">What Went Wrong (Root Cause)</span>
+                        </div>
+                        <p className="text-[var(--text-main)] font-medium leading-relaxed pl-5.5">
+                          {m.whatWentWrong}
+                        </p>
+                      </div>
+
+                      {/* Correct Solution & Methodology Card */}
+                      <div className="p-3.5 rounded-xl bg-emerald-500/10 dark:bg-emerald-950/30 border-2 border-emerald-500/40 space-y-2">
+                        <div className="flex items-center gap-1.5 font-bold text-emerald-700 dark:text-emerald-300">
+                          <Sparkles className="w-4 h-4 text-emerald-500 shrink-0" />
+                          <span className="uppercase tracking-wider text-[11px]">Correct Solution & Methodology</span>
+                        </div>
+                        <div className="text-[var(--text-main)] leading-relaxed whitespace-pre-wrap font-sans bg-[var(--bg-surface)] p-3 rounded-lg border border-emerald-500/20">
+                          {m.correctSolution || 'Refer to verified step-by-step solution.'}
+                        </div>
+
+                        {m.betterApproach && m.betterApproach !== m.correctSolution && (
+                          <div className="pt-1.5 space-y-1">
+                            <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+                              <Zap className="w-3.5 h-3.5 text-indigo-500" /> Speed Shortcut / Alternative Approach:
+                            </span>
+                            <p className="text-[var(--text-main)] italic pl-4 border-l-2 border-indigo-400">
+                              {m.betterApproach}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Rule to Remember Sticker */}
+                      {m.ruleToRemember && (
+                        <div className="p-3 rounded-xl bg-gradient-to-r from-[var(--sakura)]/20 via-[var(--peach)]/25 to-[var(--mint)]/20 border-2 border-[var(--ink-border)] shadow-sm flex items-start gap-2.5">
+                          <span className="text-base select-none">⚡</span>
+                          <div className="text-xs">
+                            <span className="font-bold text-[var(--ink)] dark:text-[var(--text-main)] uppercase tracking-wide block text-[10.5px]">
+                              Rule to Remember:
+                            </span>
+                            <span className="font-semibold text-[var(--ink)] dark:text-[var(--text-main)]">
+                              {m.ruleToRemember}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
                 )}
-                <div className="flex gap-4 pt-1 border-t border-[var(--ink-border)]/40 text-[11px] font-mono">
-                  <span className="text-rose-600 dark:text-rose-400 font-bold">My Ans: {m.myAnswer}</span>
-                  <span className="text-emerald-600 dark:text-emerald-400 font-bold">Correct Ans: {m.correctAnswer}</span>
-                </div>
               </div>
-
-              {/* Solution & Shortcut */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                <div className="p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--ink-border)] space-y-1">
-                  <span className="font-bold text-[var(--peach)] block text-[11px]">WHAT WENT WRONG:</span>
-                  <p className="text-[var(--text-muted)] leading-relaxed">{m.whatWentWrong}</p>
-                </div>
-                <div className="p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--ink-border)] space-y-1">
-                  <span className="font-bold text-[var(--mint)] block text-[11px]">CORRECT APPROACH:</span>
-                  <p className="text-[var(--text-muted)] leading-relaxed">{m.betterApproach || m.correctSolution}</p>
-                </div>
-              </div>
-
-              {/* Rule to Remember Sticker */}
-              <div className="p-2.5 rounded-xl bg-[var(--peach)] text-[var(--ink)] border-2 border-[var(--ink-border)] flex items-center gap-2 font-bold text-xs">
-                <Sparkles className="w-4 h-4 shrink-0" />
-                <span>Rule to Remember: {m.ruleToRemember}</span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

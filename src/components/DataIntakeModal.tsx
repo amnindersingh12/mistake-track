@@ -9,7 +9,7 @@ import {
   FullMockScanResult,
   SectionPerformance
 } from '../types';
-import { db } from '../db/db';
+import { db, extractExamNameFromMock } from '../db/db';
 import {
   getMockCsvTemplate,
   getMistakeCsvTemplate,
@@ -451,17 +451,34 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
       const todayStr = getTodayDateStr();
 
       // Single ACID transaction saving mock and selected mistakes
-      await db.transaction('rw', [db.mocks, db.mistakes], async () => {
+      await db.transaction('rw', [db.mocks, db.mistakes, db.settings], async () => {
         const mockId = (await db.mocks.add(mockRecord as MockTest)) as number;
+
+        // Auto-adapt exam name from mock title
+        try {
+          const derivedExam = extractExamNameFromMock(mockRecord.name);
+          if (derivedExam && derivedExam.length > 2 && derivedExam.toLowerCase() !== 'mock') {
+            const curSettings = await db.settings.get('current');
+            if (curSettings && curSettings.examName !== derivedExam) {
+              curSettings.examName = derivedExam;
+              await db.settings.put(curSettings);
+            }
+          }
+        } catch {
+          // ignore
+        }
 
         if (selectedQuestions.length > 0) {
           const mistakeEntries: MistakeEntry[] = selectedQuestions.map((q) => {
             const qStatus = getScannedQuestionStatus(q);
             const resultType: ResultType = qStatus === 'Skipped' ? 'Left unattempted' : qStatus === 'Correct' ? 'Correct-but-slow' : 'Wrong';
             const reasons = questionMistakeReasons[q.questionNumber] || ['Conceptual gap'];
-            const formattedOptions = q.options?.map((opt) =>
-              `${opt.index + 1}. ${opt.text}${opt.isCorrect ? ' [Correct]' : ''}${opt.isSelected ? ' [Selected]' : ''}`
-            ).join('\n') || '';
+            const uniqueOptions = (q.options || [])
+              .filter((opt, idx, arr) => arr.findIndex((o) => o.text.trim().toLowerCase() === opt.text.trim().toLowerCase()) === idx)
+              .slice(0, 5);
+            const formattedOptions = uniqueOptions.map((opt, i) =>
+              `${String.fromCharCode(65 + i)}. ${opt.text}${opt.isCorrect ? ' [Correct]' : ''}${opt.isSelected ? ' [Selected]' : ''}`
+            ).join('\n');
 
             return {
               mockId,
@@ -1806,9 +1823,12 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
                                     Options:
                                   </span>
                                   <div className="grid grid-cols-1 gap-1">
-                                    {q.options.map((opt) => (
+                                    {q.options
+                                      .filter((opt, idx, arr) => arr.findIndex((o) => o.text.trim().toLowerCase() === opt.text.trim().toLowerCase()) === idx)
+                                      .slice(0, 5)
+                                      .map((opt, optIndex) => (
                                       <div
-                                        key={opt.index}
+                                        key={opt.index ?? optIndex}
                                         className={`p-2 rounded-lg text-xs flex items-center justify-between border ${
                                           opt.isCorrect
                                             ? 'bg-emerald-950/20 border-emerald-500/40 text-emerald-300 font-semibold'
@@ -1818,7 +1838,7 @@ export const DataIntakeModal: React.FC<DataIntakeModalProps> = ({
                                         }`}
                                       >
                                         <span>
-                                          <strong className="mr-1.5">{opt.index + 1}.</strong> {opt.text}
+                                          <strong className="mr-1.5">{String.fromCharCode(65 + optIndex)}.</strong> {opt.text}
                                         </span>
                                         {opt.isCorrect && <span className="text-[10px] text-emerald-400 font-bold">✓ Correct</span>}
                                         {opt.isSelected && !opt.isCorrect && <span className="text-[10px] text-rose-400 font-bold">✗ Selected</span>}

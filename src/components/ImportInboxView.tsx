@@ -4,6 +4,7 @@ import {
   MistakeEntry,
   FullMockScanResult,
   ScannedQuestion,
+  ScannedQuestionOption,
   StudyBridgeImportPayload,
   ResultType
 } from '../types';
@@ -24,7 +25,10 @@ import {
   Keyboard,
   Check,
   RotateCcw,
-  BookOpen
+  BookOpen,
+  Eye,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 
 export interface ImportInboxViewProps {
@@ -35,15 +39,22 @@ export interface ImportInboxViewProps {
 
 const ERROR_TYPE_SHORTCUTS: Array<{ key: string; label: string }> = [
   { key: '1', label: 'Concept gap' },
-  { key: '2', label: 'Calculation mistake' },
-  { key: '3', label: 'Silly/careless' },
-  { key: '4', label: 'Formula forgotten' },
-  { key: '5', label: 'Misread question' },
-  { key: '6', label: 'Time pressure rush' },
-  { key: '7', label: 'Did not know the shortcut' },
-  { key: '8', label: 'Guessed (no basis)' },
-  { key: '9', label: 'Overthinking' }
+  { key: '2', label: 'Silly/careless' },
+  { key: '3', label: 'Guessed (no basis)' },
+  { key: '4', label: 'Calculation mistake' }
 ];
+
+function isOptionCorrect(opt: ScannedQuestionOption, index: number, q: ScannedQuestion): boolean {
+  if (opt.isCorrect === true) return true;
+  if (!q.correctAnswer) return false;
+  const ca = q.correctAnswer.trim().toLowerCase();
+  const optText = opt.text.trim().toLowerCase();
+  if (optText === ca) return true;
+  const letter = String.fromCharCode(65 + index).toLowerCase();
+  if (ca === letter || ca === `option ${letter}` || ca === `(${letter})`) return true;
+  if (ca === String(index + 1) || ca === `option ${index + 1}`) return true;
+  return false;
+}
 
 export const ImportInboxView: React.FC<ImportInboxViewProps> = ({
   initialPayload,
@@ -66,6 +77,11 @@ export const ImportInboxView: React.FC<ImportInboxViewProps> = ({
   const [triageIndex, setTriageIndex] = useState<number>(0);
   const [selectedErrors, setSelectedErrors] = useState<string[]>(['Concept gap']);
   const [ruleToRemember, setRuleToRemember] = useState<string>('');
+
+  // Question Detail & Attempt Modal State
+  const [openQuestion, setOpenQuestion] = useState<ScannedQuestion | null>(null);
+  const [selectedOptionIdx, setSelectedOptionIdx] = useState<number | null>(null);
+  const [hasSubmitted, setHasSubmitted] = useState<boolean>(false);
 
   // Filtering & Search
   const [filterStatus, setFilterStatus] = useState<'all' | 'wrong' | 'unattempted'>('all');
@@ -231,6 +247,31 @@ export const ImportInboxView: React.FC<ImportInboxViewProps> = ({
 
   const currentTriageQuestion = filteredInbox[triageIndex];
 
+  // Navigation for open question detail modal
+  const currentOpenIdx = useMemo(() => {
+    if (!openQuestion) return -1;
+    return filteredInbox.findIndex((q) => q.questionNumber === openQuestion.questionNumber);
+  }, [openQuestion, filteredInbox]);
+
+  const hasPrev = currentOpenIdx > 0;
+  const hasNext = currentOpenIdx >= 0 && currentOpenIdx < filteredInbox.length - 1;
+
+  const handlePrevQuestion = () => {
+    if (hasPrev) {
+      setOpenQuestion(filteredInbox[currentOpenIdx - 1]);
+      setSelectedOptionIdx(null);
+      setHasSubmitted(false);
+    }
+  };
+
+  const handleNextQuestion = () => {
+    if (hasNext) {
+      setOpenQuestion(filteredInbox[currentOpenIdx + 1]);
+      setSelectedOptionIdx(null);
+      setHasSubmitted(false);
+    }
+  };
+
   // Fast Triage: Accept & Save into db.mistakes
   const handleAcceptAndSave = useCallback(async () => {
     if (!currentTriageQuestion) return;
@@ -296,7 +337,7 @@ export const ImportInboxView: React.FC<ImportInboxViewProps> = ({
     }
   }, [currentTriageQuestion, triageIndex, filteredInbox.length]);
 
-  // Fast Triage: Keyboard shortcuts (keys 1-9, Enter, Skip)
+  // Fast Triage: Keyboard shortcuts (keys 1-4, Enter, Skip)
   useEffect(() => {
     if (!isFastTriageOpen || !currentTriageQuestion) return;
 
@@ -306,7 +347,7 @@ export const ImportInboxView: React.FC<ImportInboxViewProps> = ({
       const isInputFocused = activeTagName === 'input' || activeTagName === 'textarea';
 
       if (!isInputFocused) {
-        // Digits 1-9 toggle error classifications
+        // Digits 1-4 toggle error classifications
         const shortcut = ERROR_TYPE_SHORTCUTS.find((s) => s.key === e.key);
         if (shortcut) {
           e.preventDefault();
@@ -499,7 +540,12 @@ export const ImportInboxView: React.FC<ImportInboxViewProps> = ({
               return (
                 <div
                   key={q.questionNumber}
-                  className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-5 hover:border-red-300 dark:hover:border-red-900 transition-colors"
+                  onClick={() => {
+                    setOpenQuestion(q);
+                    setSelectedOptionIdx(null);
+                    setHasSubmitted(false);
+                  }}
+                  className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-5 hover:border-red-300 dark:hover:border-red-900 transition-colors cursor-pointer group"
                 >
                   <div className="flex items-start justify-between gap-4 mb-3">
                     <div className="flex items-center gap-2">
@@ -523,16 +569,24 @@ export const ImportInboxView: React.FC<ImportInboxViewProps> = ({
                       </span>
                     </div>
 
-                    <button
-                      onClick={() => {
-                        setTriageIndex(idx);
-                        setIsFastTriageOpen(true);
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold text-red-600 hover:text-white hover:bg-red-600 border border-red-200 dark:border-red-900 rounded-lg transition-colors"
-                    >
-                      <Zap className="w-3.5 h-3.5" />
-                      Triage This
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs font-medium text-stone-400 group-hover:text-red-600 dark:group-hover:text-red-400 flex items-center gap-1 transition-colors">
+                        <Eye className="w-3.5 h-3.5" />
+                        View
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTriageIndex(idx);
+                          setIsFastTriageOpen(true);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold text-red-600 hover:text-white hover:bg-red-600 border border-red-200 dark:border-red-900 rounded-lg transition-colors"
+                      >
+                        <Zap className="w-3.5 h-3.5" />
+                        Triage This
+                      </button>
+                    </div>
                   </div>
 
                   <p className="text-sm text-stone-900 dark:text-stone-100 font-medium mb-3 line-clamp-2">
@@ -560,6 +614,300 @@ export const ImportInboxView: React.FC<ImportInboxViewProps> = ({
         </div>
       )}
 
+      {/* QUESTION DETAIL & ATTEMPT MODAL */}
+      {openQuestion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-[var(--bg-panel)] border-[3px] border-[var(--ink-border)] rounded-2xl shadow-manga-lg max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-4 border-b-2 border-stone-200 dark:border-stone-800 flex items-center justify-between bg-stone-50/80 dark:bg-stone-900/80">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-mono text-xs font-bold px-2.5 py-1 bg-stone-200 dark:bg-stone-800 text-stone-800 dark:text-stone-200 rounded-md">
+                  Q.{openQuestion.questionNumber}
+                </span>
+                <span className="text-xs font-semibold px-2.5 py-1 bg-stone-200 dark:bg-stone-800 text-stone-700 dark:text-stone-300 rounded-md">
+                  {openQuestion.section}
+                </span>
+                {openQuestion.topic && (
+                  <span className="text-xs px-2.5 py-1 bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 rounded-md font-medium">
+                    {openQuestion.topic}
+                  </span>
+                )}
+                <span
+                  className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${
+                    getScannedQuestionStatus(openQuestion) === 'Wrong'
+                      ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
+                      : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                  }`}
+                >
+                  {getScannedQuestionStatus(openQuestion) === 'Wrong' ? '✕ Wrong in Mock' : '○ Skipped in Mock'}
+                </span>
+              </div>
+
+              <button
+                onClick={() => setOpenQuestion(null)}
+                className="p-1.5 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-5 flex-1">
+              {/* Question Text */}
+              <div>
+                <h4 className="text-base font-semibold text-stone-900 dark:text-stone-100 leading-relaxed">
+                  {openQuestion.questionText}
+                </h4>
+                {openQuestion.questionImage && (
+                  <img
+                    src={openQuestion.questionImage}
+                    alt="Question Diagram"
+                    className="max-h-60 mt-3 rounded-xl border border-stone-200 dark:border-stone-800 object-contain"
+                  />
+                )}
+              </div>
+
+              {/* Mock Test Context */}
+              <div className="flex items-center gap-4 text-xs text-stone-500 dark:text-stone-400 bg-stone-100/70 dark:bg-stone-800/50 p-2.5 rounded-xl border border-stone-200/60 dark:border-stone-700/60">
+                <div>
+                  <span>Your Mock Answer: </span>
+                  <span className="font-semibold text-rose-600 dark:text-rose-400">
+                    {openQuestion.selectedAnswer || 'Left unattempted'}
+                  </span>
+                </div>
+                {openQuestion.timeTaken && (
+                  <div>
+                    <span>Time Spent: </span>
+                    <span className="font-medium text-stone-700 dark:text-stone-300">{openQuestion.timeTaken}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Options as Clickable Buttons */}
+              <div className="space-y-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-stone-500 block">
+                  {hasSubmitted ? 'Solution & Feedback' : 'Attempt Question (Select an Option):'}
+                </span>
+
+                {(!openQuestion.options || openQuestion.options.length === 0) ? (
+                  <div className="text-sm text-stone-500 italic p-4 text-center">
+                    No options recorded for this question.
+                  </div>
+                ) : (
+                  <div className="grid gap-2.5">
+                    {openQuestion.options.slice(0, 4).map((opt, i) => {
+                      const isCorrect = isOptionCorrect(opt, i, openQuestion);
+                      const isSelected = selectedOptionIdx === i;
+
+                      // Style determination
+                      let optionClasses = 'p-3 rounded-xl border-2 text-sm flex items-start gap-2.5 text-left transition-all';
+                      let letterClasses = 'font-mono text-xs font-bold px-2 py-0.5 rounded';
+
+                      if (!hasSubmitted) {
+                        if (isSelected) {
+                          optionClasses += ' border-blue-600 bg-blue-50/70 dark:bg-blue-950/40 text-blue-950 dark:text-blue-100 shadow-sm';
+                          letterClasses += ' bg-blue-600 text-white';
+                        } else {
+                          optionClasses += ' border-stone-200 dark:border-stone-700 bg-stone-50/50 dark:bg-stone-800/40 text-stone-800 dark:text-stone-200 hover:border-stone-400 dark:hover:border-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer';
+                          letterClasses += ' bg-stone-200 dark:bg-stone-700 text-stone-700 dark:text-stone-300';
+                        }
+                      } else {
+                        // Submitted state
+                        if (isCorrect && isSelected) {
+                          // User picked correct
+                          optionClasses += ' border-[var(--mint)] bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-100';
+                          letterClasses += ' bg-[var(--mint)] text-white';
+                        } else if (!isCorrect && isSelected) {
+                          // User picked wrong
+                          optionClasses += ' border-rose-500 bg-rose-50 dark:bg-rose-950/40 text-rose-900 dark:text-rose-100';
+                          letterClasses += ' bg-rose-500 text-white';
+                        } else if (isCorrect && !isSelected) {
+                          // Correct option not picked
+                          optionClasses += ' border-[var(--mint)] bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-900 dark:text-emerald-200';
+                          letterClasses += ' bg-[var(--mint)] text-white';
+                        } else {
+                          // Neutral unselected
+                          optionClasses += ' border-stone-200 dark:border-stone-800 bg-stone-50/30 dark:bg-stone-900/40 text-stone-400 dark:text-stone-600 opacity-60';
+                          letterClasses += ' bg-stone-200/60 dark:bg-stone-800 text-stone-400 dark:text-stone-600';
+                        }
+                      }
+
+                      return (
+                        <button
+                          key={i}
+                          type="button"
+                          disabled={hasSubmitted}
+                          onClick={() => setSelectedOptionIdx(i)}
+                          className={optionClasses}
+                        >
+                          <span className={letterClasses}>
+                            {String.fromCharCode(65 + i)}
+                          </span>
+                          <span className="flex-1 leading-snug">{opt.text}</span>
+
+                          {hasSubmitted && isCorrect && isSelected && (
+                            <span className="text-xs font-bold text-[var(--mint)] px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/60 shrink-0">
+                              ✓ Correct!
+                            </span>
+                          )}
+                          {hasSubmitted && !isCorrect && isSelected && (
+                            <span className="text-xs font-bold text-rose-600 px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-900/60 shrink-0">
+                              ✕ Wrong
+                            </span>
+                          )}
+                          {hasSubmitted && isCorrect && !isSelected && (
+                            <span className="text-xs font-bold text-[var(--mint)] px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/60 shrink-0">
+                              ✓ Correct Answer
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Submit / Retry Actions */}
+              {!hasSubmitted ? (
+                <div className="flex items-center justify-between pt-2">
+                  <span className="text-xs text-stone-500 dark:text-stone-400">
+                    {selectedOptionIdx !== null
+                      ? `Option ${String.fromCharCode(65 + selectedOptionIdx)} selected`
+                      : 'Choose an option to test your answer'}
+                  </span>
+                  <button
+                    disabled={selectedOptionIdx === null}
+                    onClick={() => setHasSubmitted(true)}
+                    className="flex items-center gap-2 px-5 py-2 text-sm font-semibold rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-sm transition-all"
+                  >
+                    <Check className="w-4 h-4" />
+                    Check Answer
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3 pt-2">
+                  {/* Feedback Summary Banner */}
+                  <div
+                    className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs ${
+                      selectedOptionIdx !== null && isOptionCorrect(openQuestion.options[selectedOptionIdx], selectedOptionIdx, openQuestion)
+                        ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-100'
+                        : 'border-rose-300 bg-rose-50 dark:bg-rose-950/40 text-rose-900 dark:text-rose-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 font-medium">
+                      {selectedOptionIdx !== null && isOptionCorrect(openQuestion.options[selectedOptionIdx], selectedOptionIdx, openQuestion) ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      ) : (
+                        <X className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                      )}
+                      <span>
+                        {selectedOptionIdx !== null && isOptionCorrect(openQuestion.options[selectedOptionIdx], selectedOptionIdx, openQuestion)
+                          ? 'Spot on! You picked the correct answer.'
+                          : 'Not quite. Review the explanation below.'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 font-mono shrink-0">
+                      <span>
+                        Your Answer: <strong>{selectedOptionIdx !== null ? String.fromCharCode(65 + selectedOptionIdx) : 'None'}</strong>
+                      </span>
+                      <span>•</span>
+                      <span>
+                        Correct Answer: <strong>{
+                          (() => {
+                            const cIdx = openQuestion.options?.findIndex((o, idx) => isOptionCorrect(o, idx, openQuestion));
+                            if (cIdx !== undefined && cIdx !== -1) {
+                              return `${String.fromCharCode(65 + cIdx)}`;
+                            }
+                            return openQuestion.correctAnswer || 'Refer to solution';
+                          })()
+                        }</strong>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => {
+                        setHasSubmitted(false);
+                        setSelectedOptionIdx(null);
+                      }}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-300 flex items-center gap-1.5 transition-colors"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      Try Again
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Explanation (Shown when submitted or if available) */}
+              {hasSubmitted && openQuestion.explanation && (
+                <div className="p-4 bg-stone-50 dark:bg-stone-800/40 rounded-xl border border-stone-200 dark:border-stone-800">
+                  <span className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-1 block">
+                    Explanation / Solution
+                  </span>
+                  <p className="text-xs text-stone-700 dark:text-stone-300 leading-relaxed whitespace-pre-wrap">
+                    {openQuestion.explanation}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t-2 border-stone-200 dark:border-stone-800 flex items-center justify-between bg-stone-50/80 dark:bg-stone-900/80">
+              <div className="flex items-center gap-2">
+                <button
+                  disabled={!hasPrev}
+                  onClick={handlePrevQuestion}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  Prev
+                </button>
+                {currentOpenIdx >= 0 && (
+                  <span className="text-xs font-mono text-stone-500 dark:text-stone-400 px-1">
+                    {currentOpenIdx + 1} / {filteredInbox.length}
+                  </span>
+                )}
+                <button
+                  disabled={!hasNext}
+                  onClick={handleNextQuestion}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    const idx = filteredInbox.findIndex((q) => q.questionNumber === openQuestion.questionNumber);
+                    if (idx !== -1) {
+                      setTriageIndex(idx);
+                    }
+                    setIsFastTriageOpen(true);
+                    setOpenQuestion(null);
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-red-600 hover:text-white hover:bg-red-600 border border-red-200 dark:border-red-900 rounded-xl transition-colors"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  Triage This
+                </button>
+
+                <button
+                  onClick={() => setOpenQuestion(null)}
+                  className="px-4 py-2 text-xs font-semibold border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300 rounded-xl transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* FAST TRIAGE MODAL */}
       {isFastTriageOpen && currentTriageQuestion && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -577,7 +925,7 @@ export const ImportInboxView: React.FC<ImportInboxViewProps> = ({
                       {triageIndex + 1} / {filteredInbox.length}
                     </span>
                   </h3>
-                  <p className="text-xs text-stone-500">Use keys 1–9 for error type, text for rule, Enter to accept.</p>
+                  <p className="text-xs text-stone-500">Use keys 1–4 for error type, text for rule, Enter to accept.</p>
                 </div>
               </div>
 
@@ -623,7 +971,7 @@ export const ImportInboxView: React.FC<ImportInboxViewProps> = ({
                 <div className="space-y-2">
                   <span className="text-xs font-semibold uppercase tracking-wider text-stone-400">Options</span>
                   <div className="grid gap-2">
-                    {currentTriageQuestion.options.map((opt, i) => {
+                    {currentTriageQuestion.options.slice(0, 4).map((opt, i) => {
                       const isCorrect = opt.isCorrect || opt.text === currentTriageQuestion.correctAnswer;
                       const isSelected = opt.isSelected || opt.text === currentTriageQuestion.selectedAnswer;
                       return (
@@ -658,11 +1006,11 @@ export const ImportInboxView: React.FC<ImportInboxViewProps> = ({
                 </div>
               )}
 
-              {/* Error Classification Keyboard Hotkeys 1-9 */}
+              {/* Error Classification Keyboard Hotkeys 1-4 */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold uppercase tracking-wider text-stone-500">
-                    Why did this mistake happen? (Press keys 1–9)
+                    Why did this mistake happen? (Press keys 1–4)
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-2">

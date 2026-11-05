@@ -1,0 +1,107 @@
+{
+  "nodes": [
+    {
+      "id": "MistakeNotebookApp",
+      "label": "Mistake Notebook & Mock Analyzer",
+      "node_type": "Application",
+      "source_file": "README.md",
+      "description": "Local-first competitive exam intelligence command centre with anime/manga aesthetic and Kitsu study-fox mascot."
+    },
+    {
+      "id": "StudyBridgeExtension",
+      "label": "StudyBridge Safari Extension",
+      "node_type": "Extension",
+      "source_file": "safari-extension/README.md",
+      "description": "Safari Web Extension V4 for 1-click full mock test extraction from Testbook."
+    },
+    {
+      "id": "ScraplingService",
+      "label": "Scrapling Python Service",
+      "node_type": "Service",
+      "source_file": "safari-extension/README.md",
+      "description": "Local microservice on port 8787 for high-fidelity HTML DOM parsing with Scrapling."
+    },
+    {
+      "id": "ImportInboxModule",
+      "label": "Import Inbox & Fast Triage",
+      "node_type": "Feature",
+      "source_file": "README.md",
+      "description": "Staging area for imported mistake questions, duplicate detection, and fast triage with 4 root-cause error types."
+    },
+    {
+      "id": "DailyQuestSRS",
+      "label": "Spaced Repetition (Daily Quest)",
+      "node_type": "Feature",
+      "source_file": "README.md",
+      "description": "3D spring card flip SRS review system using local calendar day math."
+    },
+    {
+      "id": "OliveboardExporter",
+      "label": "Oliveboard Mock Test Exporter",
+      "node_type": "Tool",
+      "source_file": "docs/scraper_guide.md",
+      "description": "1-click browser bookmarklet and offline CLI parser for Oliveboard mock solutions."
+    },
+    {
+      "id": "DexieDatabaseV4",
+      "label": "Dexie Database Schema V4",
+      "node_type": "Database",
+      "source_file": "README.md",
+      "description": "Client-side IndexedDB database storing settings, mocks, mistakes, papers, tasks, and importBatches."
+    }
+  ],
+  "edges": [
+    {
+      "source": "StudyBridgeExtension",
+      "target": "MistakeNotebookApp",
+      "relation": "delivers_data_to",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md"
+    },
+    {
+      "source": "StudyBridgeExtension",
+      "target": "ScraplingService",
+      "relation": "delegates_dom_parsing_to",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md"
+    },
+    {
+      "source": "MistakeNotebookApp",
+      "target": "ImportInboxModule",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md"
+    },
+    {
+      "source": "MistakeNotebookApp",
+      "target": "DailyQuestSRS",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md"
+    },
+    {
+      "source": "MistakeNotebookApp",
+      "target": "DexieDatabaseV4",
+      "relation": "persists_via",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md"
+    },
+    {
+      "source": "ImportInboxModule",
+      "target": "DexieDatabaseV4",
+      "relation": "saves_mistakes_to",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md"
+    },
+    {
+      "source": "OliveboardExporter",
+      "target": "MistakeNotebookApp",
+      "relation": "exports_compatible_json_for",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md"
+    }
+  ],
+  "hyperedges": [],
+  "input_tokens": 0,
+  "output_tokens": 0
+}

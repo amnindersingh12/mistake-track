@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { MockTest, ExamSettings, SectionPerformance, AttemptType } from '../types';
-import { db } from '../db/db';
+import { db, extractExamNameFromMock } from '../db/db';
 import { getTodayDateStr } from '../utils/srs';
 import { validateMockSections, MockValidationErrors } from '../utils/mockValidation';
 import { Mascot } from './Mascot';
@@ -38,7 +38,7 @@ export const MocksView: React.FC<MocksViewProps> = ({
   const [validationErrors, setValidationErrors] = useState<MockValidationErrors>({});
 
   // Form State
-  const defaultMockName = `Testbook Mock ${String(mocks.length + 1).padStart(2, '0')}`;
+  const defaultMockName = `Mock ${String(mocks.length + 1).padStart(2, '0')}`;
   const [name, setName] = useState(defaultMockName);
   const [date, setDate] = useState(getTodayDateStr());
   const [source, setSource] = useState('Testbook');
@@ -70,7 +70,7 @@ export const MocksView: React.FC<MocksViewProps> = ({
 
   const openAddModal = () => {
     setEditingMockId(null);
-    setName(`Testbook Mock ${String(mocks.length + 1).padStart(2, '0')}`);
+    setName(`Mock ${String(mocks.length + 1).padStart(2, '0')}`);
     setDate(getTodayDateStr());
     setSource('Testbook');
     setAttemptType('mock');
@@ -228,6 +228,20 @@ export const MocksView: React.FC<MocksViewProps> = ({
       await db.mocks.add(mockPayload as MockTest);
     }
 
+    // Auto-update exam name from mock title if non-trivial
+    try {
+      const derivedExam = extractExamNameFromMock(mockPayload.name);
+      if (derivedExam && derivedExam.length > 2 && derivedExam.toLowerCase() !== 'mock') {
+        const curSettings = await db.settings.get('current');
+        if (curSettings && curSettings.examName !== derivedExam) {
+          curSettings.examName = derivedExam;
+          await db.settings.put(curSettings);
+        }
+      }
+    } catch {
+      // Ignore setting sync errors
+    }
+
     setIsAddModalOpen(false);
     onRefresh();
   };
@@ -358,7 +372,8 @@ export const MocksView: React.FC<MocksViewProps> = ({
               return (
                 <div
                   key={mock.id}
-                  className="manga-panel p-4 sm:p-5 bg-[var(--bg-panel)] rounded-2xl border-3 border-[var(--ink-border)] shadow-manga hover:shadow-manga-lg transition-all space-y-3"
+                  onClick={() => openEditModal(mock)}
+                  className="manga-panel p-4 sm:p-5 bg-[var(--bg-panel)] rounded-2xl border-3 border-[var(--ink-border)] shadow-manga hover:shadow-manga-lg transition-all space-y-3 cursor-pointer"
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b-2 border-[var(--ink-border)] pb-3">
                     <div className="flex items-center gap-3">
@@ -402,38 +417,43 @@ export const MocksView: React.FC<MocksViewProps> = ({
                       </div>
 
                       <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => openEditModal(mock)}
-                          className="p-1.5 rounded-lg border border-[var(--ink-border)] bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text-main)]"
-                          title="Edit Mock"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => mock.id && handleDeleteMock(mock.id)}
-                          className="p-1.5 rounded-lg border border-[var(--ink-border)] bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-rose-600"
-                          title="Delete Mock"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                         <button
+                           onClick={(e) => { e.stopPropagation(); openEditModal(mock); }}
+                           className="p-1.5 rounded-lg border border-[var(--ink-border)] bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text-main)]"
+                           title="Edit Mock"
+                         >
+                           <Edit2 className="w-3.5 h-3.5" />
+                         </button>
+                         <button
+                           onClick={(e) => { e.stopPropagation(); mock.id && handleDeleteMock(mock.id); }}
+                           className="p-1.5 rounded-lg border border-[var(--ink-border)] bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-rose-600"
+                           title="Delete Mock"
+                         >
+                           <Trash2 className="w-3.5 h-3.5" />
+                         </button>
+                       </div>
                     </div>
                   </div>
 
                   {/* Section Breakdown Pills */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
                     {mock.sections.map((sec) => (
                       <div
                         key={sec.sectionId}
-                        className="p-3 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] space-y-1 text-xs"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditModal(mock);
+                        }}
+                        className="p-3 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] hover:border-[var(--sakura)] hover:shadow-sm transition-all cursor-pointer space-y-1 text-xs"
+                        title={`Click to view/edit ${sec.sectionName}`}
                       >
                         <div className="flex items-center justify-between font-bold">
-                          <span>{sec.sectionName.split(' ')[0]}</span>
-                          <span className="text-[var(--sakura)] font-display">{sec.netScore} pts</span>
+                          <span className="truncate pr-1">{sec.sectionName}</span>
+                          <span className="text-[var(--sakura)] font-display shrink-0">{sec.netScore} pts</span>
                         </div>
                         <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)] font-mono">
                           <span>{sec.correct}C / {sec.wrong}W / {sec.unattempted}U</span>
-                          <span className="font-bold">{sec.accuracy}% acc</span>
+                          <span className="font-bold">{sec.accuracy}%</span>
                         </div>
                         <div className="text-[10px] text-rose-600 dark:text-rose-400 font-bold">
                           Lost -{sec.marksLostNegative} to negative

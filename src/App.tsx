@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { db, ensureSettings, DEFAULT_SETTINGS } from './db/db';
-import { ExamSettings, MockTest, MistakeEntry, PaperTest, StudyTask, StudyBridgeImportPayload } from './types';
+import { ExamSettings, MockTest, MistakeEntry, PaperTest, StudyTask, StudyBridgeImportPayload, ImportBatch } from './types';
 import { validateStudyBridgePayload } from './utils/dataIntake';
 import { Sidebar, NavTab } from './components/Sidebar';
 import { LivingSky } from './components/LivingSky';
@@ -46,9 +46,23 @@ export function App() {
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [studyBridgePayload, setStudyBridgePayload] = useState<StudyBridgeImportPayload | null>(null);
 
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'info' | 'warning' } | null>(null);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((msg: string, type: 'success' | 'info' | 'warning' = 'success') => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+    setToast({ msg, type });
+    toastTimeoutRef.current = setTimeout(() => {
+      setToast(null);
+      toastTimeoutRef.current = null;
+    }, 4000);
+  }, []);
+
   // Listen for StudyBridge extension import messages
   useEffect(() => {
-    const handleStudyBridgeMessage = (event: MessageEvent) => {
+    const handleStudyBridgeMessage = async (event: MessageEvent) => {
       const data = event.data;
       if (!data || data.type !== 'STUDYBRIDGE_IMPORT') return;
 
@@ -77,14 +91,53 @@ export function App() {
         '*'
       );
 
+      // Deduplication check for fullscan payload against db.importBatches
+      if (payload.mode === 'fullscan' || payload.scanData) {
+        const mockName = payload.scanData?.mockName || payload.text?.substring(0, 60) || 'Mock Test';
+        const todayDateStr = new Date().toISOString().split('T')[0];
+        const capturedDateStr = payload.capturedAt ? payload.capturedAt.split('T')[0] : todayDateStr;
+
+        try {
+          const existingBatches = await db.importBatches.toArray();
+          const duplicate = existingBatches.find((b) => {
+            const bDate = b.importedAt ? b.importedAt.split('T')[0] : '';
+            return b.mockName === mockName && (bDate === todayDateStr || bDate === capturedDateStr);
+          });
+
+          if (duplicate) {
+            showToast(`Already imported this scan (${mockName}) — skipped`, 'warning');
+            return;
+          }
+
+          const untriagedCount = (payload.scanData?.questions || []).filter(
+            (q) => q.statusBadge === 'Wrong' || q.statusBadge === 'Skipped'
+          ).length;
+
+          await db.importBatches.add({
+            source: payload.source?.platform || 'extension',
+            mockName: payload.scanData?.mockName || payload.text?.substring(0, 60),
+            importedAt: new Date().toISOString(),
+            totalQuestions: payload.scanData?.totalQuestions || 0,
+            untriagedCount,
+            status: 'pending'
+          } as ImportBatch);
+        } catch {
+          // Fallback if db read/write errors
+        }
+      }
+
       setStudyBridgePayload(payload);
-      setIsDataIntakeOpen(true);
+      const untriagedCount = (payload.scanData?.questions || []).filter(
+        (q) => q.statusBadge === 'Wrong' || q.statusBadge === 'Skipped'
+      ).length;
+      const qCount = untriagedCount > 0 ? untriagedCount : payload.scanData?.totalQuestions || 0;
+      showToast(`Scan imported — ${qCount} questions queued in Import Inbox`, 'success');
       setCurrentTab('inbox');
     };
 
     window.addEventListener('message', handleStudyBridgeMessage);
     return () => window.removeEventListener('message', handleStudyBridgeMessage);
-  }, []);
+  }, [showToast]);
 
   const handleStudyBridgeAck = (id: string, status: 'saved' | 'cancelled') => {
     window.postMessage(
@@ -541,6 +594,16 @@ export function App() {
           onClose={() => setIsShortcutsOpen(false)}
         />
       </Suspense>
+
+      {/* Global Toast Notification */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl bg-[var(--bg-panel)] border-2 border-[var(--ink-border)] shadow-manga text-xs font-bold text-[var(--ink)] dark:text-[var(--text-main)]">
+          <span className={toast.type === 'warning' ? 'text-amber-500' : 'text-[var(--mint)]'}>
+            {toast.type === 'warning' ? '⚠' : '✓'}
+          </span>
+          {toast.msg}
+        </div>
+      )}
     </div>
   );
 }
