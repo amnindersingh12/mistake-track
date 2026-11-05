@@ -1,4 +1,4 @@
-import { PlannerInput, PlannerResult, WhatIfSectionInput, WhatIfResult } from '../types';
+import { PlannerInput, PlannerResult, WhatIfSectionInput, WhatIfResult, QuestionType } from '../types';
 
 /**
  * Calculates the expected score per question attempt.
@@ -380,6 +380,254 @@ export function calculateTargetGap(
     targetGap,
     passedCutoff,
     passedTarget,
+    summarySentence
+  };
+}
+
+export type AttemptStrategyType = 'aggressive' | 'selective' | 'skip';
+
+export interface QuestionTypeBreakEvenResult {
+  questionType: QuestionType;
+  marks: number;
+  negativeMarks: number;
+  breakEvenAccuracyPercent: number;
+  formula: string;
+  explanation: string;
+}
+
+export interface QuestionTypeAttemptStrategy {
+  questionType: QuestionType;
+  marks: number;
+  negativeMarks: number;
+  breakEvenAccuracyPercent: number;
+  historicalAccuracyPercent: number;
+  expectedValuePerAttempt: number;
+  strategy: AttemptStrategyType;
+  badgeLabel: string;
+  actionGuidance: string;
+}
+
+export interface TopicWeightGapItem {
+  topic: string;
+  syllabusWeight: number; // in marks
+  historicalHitRate: number; // 0 - 100%
+  currentEstimatedMarks: number;
+  potentialMarks: number;
+  recoverableDelta: number;
+  priority: 'High' | 'Medium' | 'Low';
+  recommendation: string;
+}
+
+export interface SyllabusScoreDeltaResult {
+  targetScore: number;
+  currentScore: number;
+  totalScoreDelta: number;
+  totalRecoverableMarks: number;
+  topics: TopicWeightGapItem[];
+  summarySentence: string;
+}
+
+/**
+ * Computes break-even accuracy math for each question type:
+ * Break-even accuracy = negativeMarks / (marks + negativeMarks)
+ */
+export function calculateQuestionTypeBreakEven(
+  questionType: QuestionType,
+  marks: number,
+  customNegativeMarks?: number
+): QuestionTypeBreakEvenResult {
+  let negativeMarks: number;
+  if (customNegativeMarks !== undefined) {
+    negativeMarks = Math.max(0, customNegativeMarks);
+  } else {
+    switch (questionType) {
+      case 'MCQ':
+        negativeMarks = Number((marks / 3).toFixed(4));
+        break;
+      case 'MSQ':
+      case 'NAT':
+      case 'descriptive':
+      default:
+        negativeMarks = 0;
+        break;
+    }
+  }
+
+  if (negativeMarks <= 0) {
+    return {
+      questionType,
+      marks,
+      negativeMarks: 0,
+      breakEvenAccuracyPercent: 0,
+      formula: `0 / (${marks} + 0) = 0%`,
+      explanation: `Zero negative marking. Any attempt has Expected Value >= 0 marks.`
+    };
+  }
+
+  const denominator = marks + negativeMarks;
+  const breakEven = Number(((negativeMarks / denominator) * 100).toFixed(2));
+
+  return {
+    questionType,
+    marks,
+    negativeMarks,
+    breakEvenAccuracyPercent: breakEven,
+    formula: `${negativeMarks} / (${marks} + ${negativeMarks}) = ${breakEven}%`,
+    explanation: `Need > ${breakEven}% accuracy for positive expected return (+${marks} / -${negativeMarks}).`
+  };
+}
+
+/**
+ * Recommends an attempt strategy given historical accuracy per question type:
+ * - If accuracy > break-even by threshold: attempt aggressively.
+ * - If accuracy is near break-even: attempt selectively (eliminate 1-2 options).
+ * - If accuracy is below break-even: skip uncertain questions.
+ */
+export function recommendAttemptStrategy(params: {
+  questionType: QuestionType;
+  marks: number;
+  negativeMarks?: number;
+  historicalAccuracyPercent: number;
+  thresholdBuffer?: number;
+}): QuestionTypeAttemptStrategy {
+  const {
+    questionType,
+    marks,
+    historicalAccuracyPercent,
+    thresholdBuffer = 10
+  } = params;
+
+  const beResult = calculateQuestionTypeBreakEven(questionType, marks, params.negativeMarks);
+  const breakEven = beResult.breakEvenAccuracyPercent;
+  const ev = calculateExpectedScorePerAttempt(
+    historicalAccuracyPercent,
+    marks,
+    beResult.negativeMarks
+  );
+
+  let strategy: AttemptStrategyType;
+  let badgeLabel: string;
+  let actionGuidance: string;
+
+  if (beResult.negativeMarks === 0) {
+    // 0 negative marking (NAT, MSQ, Descriptive)
+    strategy = 'aggressive';
+    badgeLabel = 'Aggressive Attempt';
+    if (questionType === 'MSQ') {
+      actionGuidance = `0 negative penalty. Note: MSQ requires all correct options with NO partial credit. Select all probable options.`;
+    } else if (questionType === 'NAT') {
+      actionGuidance = `0 negative penalty. Attempt every question; compute to exact digits or best scientific estimate.`;
+    } else {
+      actionGuidance = `0 negative penalty. Attempt fully to maximize scored marks.`;
+    }
+  } else {
+    // Negative marking exists (MCQ)
+    const safeThreshold = breakEven + thresholdBuffer;
+    if (historicalAccuracyPercent >= safeThreshold) {
+      strategy = 'aggressive';
+      badgeLabel = 'Aggressive Attempt';
+      actionGuidance = `Historical accuracy (${historicalAccuracyPercent.toFixed(1)}%) is well above break-even (${breakEven}%). Expected value is +${ev.toFixed(2)} marks/attempt. Attempt decisively.`;
+    } else if (historicalAccuracyPercent >= breakEven) {
+      strategy = 'selective';
+      badgeLabel = 'Selective Attempt';
+      actionGuidance = `Accuracy (${historicalAccuracyPercent.toFixed(1)}%) is near break-even (${breakEven}%). Attempt only when you can eliminate at least 1-2 options.`;
+    } else {
+      strategy = 'skip';
+      badgeLabel = 'Skip / High Risk';
+      actionGuidance = `Accuracy (${historicalAccuracyPercent.toFixed(1)}%) is below break-even (${breakEven}%). Expected value is negative (${ev.toFixed(2)} marks). Skip guesses to protect score.`;
+    }
+  }
+
+  return {
+    questionType,
+    marks,
+    negativeMarks: beResult.negativeMarks,
+    breakEvenAccuracyPercent: breakEven,
+    historicalAccuracyPercent: Number(historicalAccuracyPercent.toFixed(1)),
+    expectedValuePerAttempt: Number(ev.toFixed(2)),
+    strategy,
+    badgeLabel,
+    actionGuidance
+  };
+}
+
+/**
+ * Breaks down target vs current score delta across syllabus topics by weight and historical hit rate.
+ */
+export function calculateSyllabusScoreDelta(params: {
+  targetScore: number;
+  currentScore: number;
+  topics: Array<{ name: string; weight: number }>;
+  topicHitRates?: Record<string, { attempted?: number; correct?: number; hitRate: number }>;
+  targetHitRate?: number;
+}): SyllabusScoreDeltaResult {
+  const {
+    targetScore,
+    currentScore,
+    topics,
+    topicHitRates = {},
+    targetHitRate = 85
+  } = params;
+
+  const totalScoreDelta = Number(Math.max(0, targetScore - currentScore).toFixed(2));
+
+  const items: TopicWeightGapItem[] = topics.map((t) => {
+    const stat = topicHitRates[t.name];
+    const historicalHitRate = stat ? Math.max(0, Math.min(100, stat.hitRate)) : 50; // default 50% baseline if no data
+    const currentEstimatedMarks = Number(((t.weight * historicalHitRate) / 100).toFixed(2));
+    const potentialMarks = Number(((t.weight * targetHitRate) / 100).toFixed(2));
+    const recoverableDelta = Number(Math.max(0, potentialMarks - currentEstimatedMarks).toFixed(2));
+
+    let priority: 'High' | 'Medium' | 'Low' = 'Low';
+    if (recoverableDelta >= 3.0 || (t.weight >= 8 && historicalHitRate < 60)) {
+      priority = 'High';
+    } else if (recoverableDelta >= 1.5 || historicalHitRate < 70) {
+      priority = 'Medium';
+    }
+
+    let recommendation = '';
+    if (historicalHitRate < 40) {
+      recommendation = `Critical gap: ${historicalHitRate.toFixed(0)}% hit rate on ${t.weight} marks. Prioritize topic revision and basic PYQs.`;
+    } else if (historicalHitRate < 75) {
+      recommendation = `Growth area: ${recoverableDelta} recoverable marks. Target MSQs & NAT problems to push towards ${targetHitRate}%.`;
+    } else {
+      recommendation = `Strong foundation (${historicalHitRate.toFixed(0)}% hit rate). Maintain with spaced revision.`;
+    }
+
+    return {
+      topic: t.name,
+      syllabusWeight: t.weight,
+      historicalHitRate,
+      currentEstimatedMarks,
+      potentialMarks,
+      recoverableDelta,
+      priority,
+      recommendation
+    };
+  });
+
+  // Sort topics by recoverableDelta descending (highest yield first)
+  items.sort((a, b) => b.recoverableDelta - a.recoverableDelta);
+
+  const totalRecoverableMarks = Number(
+    items.reduce((sum, item) => sum + item.recoverableDelta, 0).toFixed(2)
+  );
+
+  let summarySentence = '';
+  if (totalScoreDelta <= 0) {
+    summarySentence = `Target achieved! Current score (${currentScore}) meets target score (${targetScore}).`;
+  } else {
+    const topRecoverable = items.slice(0, 3).filter((i) => i.recoverableDelta > 0);
+    const topTopicsDesc = topRecoverable.map((t) => `${t.topic} (+${t.recoverableDelta}m)`).join(', ');
+    summarySentence = `Target delta is +${totalScoreDelta} marks. Highest recovery opportunities: ${topTopicsDesc || 'balanced across topics'}.`;
+  }
+
+  return {
+    targetScore,
+    currentScore,
+    totalScoreDelta,
+    totalRecoverableMarks,
+    topics: items,
     summarySentence
   };
 }

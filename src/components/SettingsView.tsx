@@ -1,5 +1,12 @@
-import React, { useState } from 'react';
-import { ExamSettings, SectionConfig } from '../types';
+import React, { useState, useEffect } from 'react';
+import {
+  ExamSettings,
+  SectionConfig,
+  ExamProfile,
+  ExamStage,
+  QuestionTypeMarkingRule,
+  QuestionType
+} from '../types';
 import { db, clearAllUserData, DEFAULT_PROFILES } from '../db/db';
 import { exportAllDataAsJson, importDataFromJson } from '../utils/exportImport';
 import {
@@ -14,7 +21,14 @@ import {
   CheckCircle2,
   FileInput,
   FolderOpen,
-  Wrench
+  Wrench,
+  ExternalLink,
+  Layers,
+  Award,
+  Check,
+  ShieldCheck,
+  Settings as SettingsIcon,
+  HelpCircle
 } from 'lucide-react';
 import { MangaIconSettings } from './MangaIcons';
 import { planMistakeRepairs, RepairPlan } from '../utils/repairMistakes';
@@ -33,6 +47,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onOpenDataIntake
 }) => {
   const [form, setForm] = useState<ExamSettings>(JSON.parse(JSON.stringify(settings)));
+  const [profiles, setProfiles] = useState<ExamProfile[]>(DEFAULT_PROFILES);
+  const [activeProfileId, setActiveProfileId] = useState<string>(DEFAULT_PROFILES[0].id);
+  const [activeStageId, setActiveStageId] = useState<string>('cbt');
+
   const [isSavedAlert, setIsSavedAlert] = useState(false);
   const [activeSectionTab, setActiveSectionTab] = useState<string>(form.sections[0]?.id || 'quant');
   const [newTopicText, setNewTopicText] = useState('');
@@ -42,6 +60,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [repairPlan, setRepairPlan] = useState<RepairPlan | null>(null);
   const [isRepairing, setIsRepairing] = useState(false);
   const [isRepairModalOpen, setIsRepairModalOpen] = useState(false);
+
+  // Load profiles from db
+  useEffect(() => {
+    let isMounted = true;
+    db.profiles
+      .toArray()
+      .then((profs) => {
+        if (isMounted && profs && profs.length > 0) {
+          setProfiles(profs);
+          if (!profs.some((p) => p.id === activeProfileId)) {
+            setActiveProfileId(profs[0].id);
+            if (profs[0].stages?.[0]) {
+              setActiveStageId(profs[0].stages[0].id);
+            }
+          }
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const currentProfile = profiles.find((p) => p.id === activeProfileId) || profiles[0];
+  const activeStage = currentProfile?.stages?.find((s) => s.id === activeStageId) || currentProfile?.stages?.[0];
 
   const handleStartRepairDryRun = async () => {
     try {
@@ -58,9 +101,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (!repairPlan || repairPlan.affectedCount === 0) return;
     setIsRepairing(true);
     try {
-      // 1. Automatic backup before applying
       await exportAllDataAsJson();
-      // 2. Apply repaired records
       await db.mistakes.bulkPut(repairPlan.repairedRecords);
       setMessage({
         type: 'success',
@@ -78,12 +119,133 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    await db.settings.put(form);
-    onSettingsSaved(form);
-    setIsSavedAlert(true);
-    setTimeout(() => setIsSavedAlert(false), 3000);
+    try {
+      // 1. Save active form to settings
+      await db.settings.put(form);
+      // 2. Save all profiles to db.profiles
+      await db.profiles.bulkPut(profiles);
+      onSettingsSaved(form);
+      setIsSavedAlert(true);
+      setTimeout(() => setIsSavedAlert(false), 3000);
+    } catch (err: unknown) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Save failed' });
+    }
   };
 
+  // Profile modifications
+  const handleUpdateProfile = (updates: Partial<ExamProfile>) => {
+    setProfiles((prev) =>
+      prev.map((p) => {
+        if (p.id === currentProfile.id) {
+          const updated = { ...p, ...updates, updatedAt: new Date().toISOString() };
+          // If this is the active default profile, sync form
+          if (p.id === 'gate-cs' || p.isDefault) {
+            setForm((prevForm) => ({
+              ...prevForm,
+              examName: updated.examName || prevForm.examName,
+              targetScore: updated.targetScore ?? prevForm.targetScore,
+              overallCutoff: updated.overallCutoff ?? prevForm.overallCutoff,
+              totalTimeMinutes: updated.totalTimeMinutes ?? prevForm.totalTimeMinutes
+            }));
+          }
+          return updated;
+        }
+        return p;
+      })
+    );
+  };
+
+  const handleToggleUnverifiedField = (field: string) => {
+    const list = currentProfile.unverifiedFields || [];
+    const updated = list.includes(field)
+      ? list.filter((f) => f !== field)
+      : [...list, field];
+    handleUpdateProfile({ unverifiedFields: updated });
+  };
+
+  // Stage modifications
+  const handleUpdateStage = (stageId: string, updates: Partial<ExamStage>) => {
+    const updatedStages = (currentProfile.stages || []).map((stg) =>
+      stg.id === stageId ? { ...stg, ...updates } : stg
+    );
+    handleUpdateProfile({ stages: updatedStages });
+  };
+
+  const handleAddStage = () => {
+    const newStageId = `stage-${Date.now()}`;
+    const newStage: ExamStage = {
+      id: newStageId,
+      name: `New Exam Stage`,
+      durationMinutes: 120,
+      totalMarks: 100,
+      cutoffMarks: 30,
+      isUnverified: true,
+      sections: [
+        {
+          id: `sec-1`,
+          name: 'Core Technical Section',
+          totalQuestions: 50,
+          marksPerCorrect: 2,
+          negativeMark: 0.5,
+          timeLimitMinutes: 120,
+          sectionalCutoff: 15,
+          topics: ['Core Topic 1', 'Core Topic 2']
+        }
+      ],
+      markingRules: [
+        { questionType: 'MCQ', marks: 1, negativeMarks: 0.3333, allowPartialCredit: false },
+        { questionType: 'MSQ', marks: 2, negativeMarks: 0, allowPartialCredit: false },
+        { questionType: 'NAT', marks: 2, negativeMarks: 0, natTolerance: 0 }
+      ]
+    };
+
+    handleUpdateProfile({ stages: [...(currentProfile.stages || []), newStage] });
+    setActiveStageId(newStageId);
+  };
+
+  const handleDeleteStage = (stageId: string) => {
+    if ((currentProfile.stages || []).length <= 1) {
+      alert('An exam profile must have at least one stage.');
+      return;
+    }
+    const updatedStages = currentProfile.stages.filter((s) => s.id !== stageId);
+    handleUpdateProfile({ stages: updatedStages });
+    setActiveStageId(updatedStages[0].id);
+  };
+
+  // Marking rule modifications
+  const handleUpdateMarkingRule = (
+    stageId: string,
+    ruleIdx: number,
+    updates: Partial<QuestionTypeMarkingRule>
+  ) => {
+    const stage = currentProfile.stages.find((s) => s.id === stageId);
+    if (!stage) return;
+    const rules = [...stage.markingRules];
+    rules[ruleIdx] = { ...rules[ruleIdx], ...updates };
+    handleUpdateStage(stageId, { markingRules: rules });
+  };
+
+  const handleAddMarkingRule = (stageId: string) => {
+    const stage = currentProfile.stages.find((s) => s.id === stageId);
+    if (!stage) return;
+    const newRule: QuestionTypeMarkingRule = {
+      questionType: 'MCQ',
+      marks: 1,
+      negativeMarks: 0.3333,
+      allowPartialCredit: false
+    };
+    handleUpdateStage(stageId, { markingRules: [...stage.markingRules, newRule] });
+  };
+
+  const handleDeleteMarkingRule = (stageId: string, ruleIdx: number) => {
+    const stage = currentProfile.stages.find((s) => s.id === stageId);
+    if (!stage) return;
+    const rules = stage.markingRules.filter((_, idx) => idx !== ruleIdx);
+    handleUpdateStage(stageId, { markingRules: rules });
+  };
+
+  // Section configuration
   const handleUpdateSection = (sectionId: string, updates: Partial<SectionConfig>) => {
     setForm((prev) => ({
       ...prev,
@@ -126,81 +288,86 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setNewErrorTypeText('');
   };
 
-  const handleRemoveErrorType = (errType: string) => {
+  const handleRemoveErrorType = (typeToRemove: string) => {
+    if (form.errorTypes.length <= 1) return;
     setForm((prev) => ({
       ...prev,
-      errorTypes: prev.errorTypes.filter((e) => e !== errType)
+      errorTypes: prev.errorTypes.filter((t) => t !== typeToRemove)
     }));
   };
 
   const handleAddSection = () => {
-    const newId = `sec_${Date.now()}`;
-    const newSection: SectionConfig = {
+    const newId = `custom_${Date.now()}`;
+    const newSec: SectionConfig = {
       id: newId,
-      name: 'New Section',
-      totalQuestions: 30,
+      name: 'New Custom Section',
+      totalQuestions: 25,
       marksPerCorrect: 1.0,
       negativeMark: 0.25,
       timeLimitMinutes: 20,
       sectionalCutoff: 10,
-      topics: ['Topic 1', 'Topic 2']
+      topics: ['Custom Topic 1', 'Custom Topic 2']
     };
     setForm((prev) => ({
       ...prev,
-      sections: [...prev.sections, newSection]
+      sections: [...prev.sections, newSec]
     }));
     setActiveSectionTab(newId);
   };
 
   const handleRemoveSection = (sectionId: string) => {
-    if (form.sections.length <= 1) {
-      alert('You must have at least one section in the exam.');
-      return;
-    }
-    const filtered = form.sections.filter((s) => s.id !== sectionId);
-    setForm((prev) => ({ ...prev, sections: filtered }));
+    if (form.sections.length <= 1) return;
+    setForm((prev) => ({
+      ...prev,
+      sections: prev.sections.filter((s) => s.id !== sectionId)
+    }));
     if (activeSectionTab === sectionId) {
-      setActiveSectionTab(filtered[0]?.id || '');
+      setActiveSectionTab(form.sections.find((s) => s.id !== sectionId)?.id || '');
     }
   };
 
   const handleImportJson = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
     try {
       const text = await file.text();
       const res = await importDataFromJson(text);
-      setMessage({ type: 'success', text: `Restored ${res.mockCount} mocks and ${res.mistakeCount} mistakes!` });
+      setMessage({ type: 'success', text: `Backup restored! Mocks: ${res.mocks}, Mistakes: ${res.mistakes}` });
       onDataResetOrLoaded();
     } catch (err: unknown) {
-      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Import failed' });
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Invalid backup file' });
     }
     e.target.value = '';
   };
 
   const handleClearAll = async () => {
-    await clearAllUserData();
-    setConfirmClearModal(false);
-    setMessage({ type: 'success', text: 'All data cleared and default exam settings restored.' });
-    onDataResetOrLoaded();
+    try {
+      await clearAllUserData();
+      setConfirmClearModal(false);
+      setMessage({ type: 'success', text: 'All database data successfully wiped and re-initialized.' });
+      onDataResetOrLoaded();
+    } catch (err: unknown) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to clear data' });
+    }
   };
 
   const activeSection = form.sections.find((s) => s.id === activeSectionTab) || form.sections[0];
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto pb-12">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[var(--bg-panel)] p-5 rounded-2xl border-2 border-[var(--ink-border)] shadow-manga">
+    <div className="space-y-8 max-w-5xl mx-auto pb-12">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b-2 border-[var(--ink-border)] pb-5">
         <div className="flex items-center gap-3">
-          <div className="p-3 bg-[var(--sakura-soft)] text-[var(--sakura)] rounded-xl border border-[var(--ink-border)]">
-            <MangaIconSettings className="w-6 h-6" />
+          <div className="w-10 h-10 rounded-2xl bg-[var(--sakura)] text-[var(--ink)] flex items-center justify-center border-2 border-[var(--ink-border)] shadow-manga-sm">
+            <SettingsIcon className="w-5 h-5 text-[var(--ink)]" />
           </div>
           <div>
-            <h2 className="font-display text-xl font-black tracking-tight text-[var(--ink)] dark:text-[var(--text-main)]">
+            <h2 className="font-display text-xl font-black text-[var(--ink)] dark:text-[var(--text-main)]">
               Exam Setup & Engine Settings
             </h2>
             <p className="text-xs text-[var(--text-muted)]">
-              Configure exam structure, marking rules, topic taxonomies, and local backup.
+              Configure exam profiles, stages, marking rules, notification sources, and local database backups.
             </p>
           </div>
         </div>
@@ -237,12 +404,407 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       )}
 
+      {/* SECTION A: Exam Profiles & Verification Sources (SPEC A Item 1) */}
+      <div className="p-6 bg-[var(--bg-panel)] rounded-2xl border-2 border-[var(--ink-border)] shadow-manga space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b-2 border-[var(--ink-border)] pb-3">
+          <div>
+            <h3 className="font-display text-base font-bold text-[var(--ink)] dark:text-[var(--text-main)] flex items-center gap-2">
+              <Award className="w-5 h-5 text-[var(--sakura)]" />
+              <span>Exam Profiles & Verification Sources (SPEC A)</span>
+            </h3>
+            <p className="text-xs text-[var(--text-muted)]">
+              Manage competitive exam targets, official recruitment notification URLs, and verify cutoff sources.
+            </p>
+          </div>
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[var(--bg-surface)] border border-[var(--ink-border)] font-bold">
+            {profiles.length} Available Profiles
+          </span>
+        </div>
+
+        {/* Profile Tabs */}
+        <div className="flex flex-wrap gap-2 border-b-2 border-[var(--ink-border)] pb-3">
+          {profiles.map((p) => {
+            const isSelected = p.id === activeProfileId;
+            const hasUnverified = (p.unverifiedFields || []).length > 0;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => {
+                  setActiveProfileId(p.id);
+                  if (p.stages?.[0]) setActiveStageId(p.stages[0].id);
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border-2 flex items-center gap-1.5 ${
+                  isSelected
+                    ? 'bg-[var(--sakura-soft)] text-[var(--ink)] border-[var(--sakura)] shadow-manga-sm'
+                    : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-transparent hover:border-[var(--ink-border)]'
+                }`}
+              >
+                <span>{p.name}</span>
+                {hasUnverified && (
+                  <span className="w-2 h-2 rounded-full bg-amber-500" title="Contains unverified fields" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Active Profile Configuration */}
+        {currentProfile && (
+          <div className="space-y-4 pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-[var(--ink)] dark:text-[var(--text-main)] mb-1">
+                  Profile Short Name
+                </label>
+                <input
+                  type="text"
+                  value={currentProfile.name}
+                  onChange={(e) => handleUpdateProfile({ name: e.target.value })}
+                  className="w-full text-xs px-3 py-2 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold text-[var(--ink)] dark:text-[var(--text-main)]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[var(--ink)] dark:text-[var(--text-main)] mb-1">
+                  Target Exam Year
+                </label>
+                <input
+                  type="number"
+                  value={currentProfile.targetYear || 2027}
+                  onChange={(e) => handleUpdateProfile({ targetYear: Number(e.target.value) || 2027 })}
+                  className="w-full text-xs px-3 py-2 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold text-[var(--ink)] dark:text-[var(--text-main)]"
+                />
+              </div>
+
+              <div className="lg:col-span-2">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-[var(--ink)] dark:text-[var(--text-main)]">
+                    Official Notification Source URL
+                  </label>
+                  {currentProfile.sourceUrl && (
+                    <a
+                      href={currentProfile.sourceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-[10px] text-[var(--action-primary)] hover:underline"
+                    >
+                      <span>Test Link</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                </div>
+                <input
+                  type="url"
+                  placeholder="https://official-portal.ac.in"
+                  value={currentProfile.sourceUrl || ''}
+                  onChange={(e) => handleUpdateProfile({ sourceUrl: e.target.value })}
+                  className="w-full text-xs px-3 py-2 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold text-[var(--ink)] dark:text-[var(--text-main)]"
+                />
+              </div>
+            </div>
+
+            {/* Unverified Badges & Confirmation Checklist */}
+            <div className="p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--ink-border)] space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-[var(--ink)] dark:text-[var(--text-main)] flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-[var(--action-primary)]" />
+                  <span>Notification Verification Status</span>
+                </span>
+                <span className="text-[10px] font-mono text-[var(--text-muted)]">
+                  Toggle to mark confirmed vs provisional
+                </span>
+              </div>
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                {[
+                  { id: 'cutoffMarks', label: 'Qualifying Cutoff' },
+                  { id: 'examDates', label: 'Exam Dates / Schedule' },
+                  { id: 'markingRules', label: 'Marking Rules / Penalty' }
+                ].map((item) => {
+                  const isUnverified = (currentProfile.unverifiedFields || []).includes(item.id);
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => handleToggleUnverifiedField(item.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold flex items-center gap-2 border transition-all ${
+                        isUnverified
+                          ? 'bg-amber-100 text-amber-900 border-amber-300'
+                          : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                      }`}
+                    >
+                      {isUnverified ? (
+                        <>
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
+                          <span>{item.label}: UNVERIFIED, confirm</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-700" />
+                          <span>{item.label}: Verified</span>
+                        </>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* SECTION B: Stages Architecture & Question-Type Marking Rules (SPEC A Item 1) */}
+      {currentProfile && (
+        <div className="p-6 bg-[var(--bg-panel)] rounded-2xl border-2 border-[var(--ink-border)] shadow-manga space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b-2 border-[var(--ink-border)] pb-3">
+            <div>
+              <h3 className="font-display text-base font-bold text-[var(--ink)] dark:text-[var(--text-main)] flex items-center gap-2">
+                <Layers className="w-5 h-5 text-[var(--sakura)]" />
+                <span>Stage Architecture & Question-Type Marking Engine</span>
+              </h3>
+              <p className="text-xs text-[var(--text-muted)]">
+                Configure exam stages (e.g. CBT, Phase 1, Phase 2, Prelims) and question-type marking rules (MCQ, MSQ, NAT, Descriptive).
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleAddStage}
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-[var(--sakura)] hover:underline"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Stage</span>
+            </button>
+          </div>
+
+          {/* Stage Tabs */}
+          <div className="flex flex-wrap gap-2 border-b-2 border-[var(--ink-border)] pb-3">
+            {(currentProfile.stages || []).map((stage) => {
+              const isSelected = stage.id === activeStageId;
+              return (
+                <button
+                  key={stage.id}
+                  type="button"
+                  onClick={() => setActiveStageId(stage.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border-2 ${
+                    isSelected
+                      ? 'bg-[var(--peach)] text-[var(--ink)] border-[var(--ink-border)] shadow-manga-sm'
+                      : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-transparent hover:border-[var(--ink-border)]'
+                  }`}
+                >
+                  <span>{stage.name}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {activeStage && (
+            <div className="space-y-5 pt-1">
+              {/* Stage Info */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-[var(--ink)] dark:text-[var(--text-main)] mb-1">
+                    Stage Name
+                  </label>
+                  <input
+                    type="text"
+                    value={activeStage.name}
+                    onChange={(e) => handleUpdateStage(activeStage.id, { name: e.target.value })}
+                    className="w-full text-xs px-3 py-2 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold text-[var(--ink)] dark:text-[var(--text-main)]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[var(--ink)] dark:text-[var(--text-main)] mb-1">
+                    Duration (Minutes)
+                  </label>
+                  <input
+                    type="number"
+                    value={activeStage.durationMinutes}
+                    onChange={(e) =>
+                      handleUpdateStage(activeStage.id, { durationMinutes: Number(e.target.value) || 60 })
+                    }
+                    className="w-full text-xs px-3 py-2 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold text-[var(--ink)] dark:text-[var(--text-main)]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[var(--ink)] dark:text-[var(--text-main)] mb-1">
+                    Total Marks
+                  </label>
+                  <input
+                    type="number"
+                    value={activeStage.totalMarks}
+                    onChange={(e) =>
+                      handleUpdateStage(activeStage.id, { totalMarks: Number(e.target.value) || 100 })
+                    }
+                    className="w-full text-xs px-3 py-2 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold text-[var(--ink)] dark:text-[var(--text-main)]"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-[var(--ink)] dark:text-[var(--text-main)]">
+                      Stage Cutoff Marks
+                    </label>
+                    {(currentProfile.unverifiedFields || []).includes('cutoffMarks') && (
+                      <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 font-bold">
+                        UNVERIFIED, confirm
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={activeStage.cutoffMarks || 0}
+                    onChange={(e) =>
+                      handleUpdateStage(activeStage.id, { cutoffMarks: Number(e.target.value) || 0 })
+                    }
+                    className="w-full text-xs px-3 py-2 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold text-[var(--ink)] dark:text-[var(--text-main)]"
+                  />
+                </div>
+              </div>
+
+              {/* Question-Type Marking Rules Editor */}
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-[var(--ink)] dark:text-[var(--text-main)]">
+                    Question-Type Marking Rules ({activeStage.markingRules?.length || 0} rules)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handleAddMarkingRule(activeStage.id)}
+                    className="inline-flex items-center gap-1 text-xs font-bold text-[var(--sakura)] hover:underline"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Rule</span>
+                  </button>
+                </div>
+
+                <div className="overflow-x-auto rounded-xl border-2 border-[var(--ink-border)] bg-[var(--bg-surface)]">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-[var(--bg-panel)] border-b-2 border-[var(--ink-border)] font-bold text-[var(--ink)] dark:text-[var(--text-main)]">
+                      <tr>
+                        <th className="p-2.5">Question Type</th>
+                        <th className="p-2.5">Marks (+Correct)</th>
+                        <th className="p-2.5">Negative (-Penalty)</th>
+                        <th className="p-2.5">Partial Credit</th>
+                        <th className="p-2.5">NAT Tolerance</th>
+                        <th className="p-2.5 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--ink-border)]">
+                      {(activeStage.markingRules || []).map((rule, idx) => (
+                        <tr key={idx}>
+                          <td className="p-2.5">
+                            <select
+                              value={rule.questionType}
+                              onChange={(e) =>
+                                handleUpdateMarkingRule(activeStage.id, idx, {
+                                  questionType: e.target.value as QuestionType
+                                })
+                              }
+                              className="text-xs px-2 py-1 rounded-lg bg-[var(--bg-panel)] border border-[var(--ink-border)] font-semibold"
+                            >
+                              <option value="MCQ">MCQ (Multiple Choice)</option>
+                              <option value="MSQ">MSQ (Multiple Select - No Negative)</option>
+                              <option value="NAT">NAT (Numerical Answer)</option>
+                              <option value="descriptive">Descriptive</option>
+                            </select>
+                          </td>
+                          <td className="p-2.5">
+                            <input
+                              type="number"
+                              step="0.25"
+                              value={rule.marks}
+                              onChange={(e) =>
+                                handleUpdateMarkingRule(activeStage.id, idx, {
+                                  marks: Number(e.target.value) || 1
+                                })
+                              }
+                              className="w-20 text-xs px-2 py-1 rounded-lg bg-[var(--bg-panel)] border border-[var(--ink-border)] font-mono font-bold"
+                            />
+                          </td>
+                          <td className="p-2.5">
+                            <input
+                              type="number"
+                              step="0.05"
+                              value={rule.negativeMarks}
+                              onChange={(e) =>
+                                handleUpdateMarkingRule(activeStage.id, idx, {
+                                  negativeMarks: Number(e.target.value) || 0
+                                })
+                              }
+                              className="w-20 text-xs px-2 py-1 rounded-lg bg-[var(--bg-panel)] border border-[var(--ink-border)] font-mono font-bold"
+                            />
+                          </td>
+                          <td className="p-2.5">
+                            <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={rule.allowPartialCredit || false}
+                                onChange={(e) =>
+                                  handleUpdateMarkingRule(activeStage.id, idx, {
+                                    allowPartialCredit: e.target.checked
+                                  })
+                                }
+                                className="w-3.5 h-3.5 rounded border-[var(--ink-border)] text-[var(--action-primary)]"
+                              />
+                              <span className="text-[11px] text-[var(--text-muted)]">
+                                {rule.questionType === 'MSQ' ? 'NO Partial Credit' : 'Allow Partial'}
+                              </span>
+                            </label>
+                          </td>
+                          <td className="p-2.5">
+                            <input
+                              type="number"
+                              step="0.001"
+                              placeholder="0"
+                              value={rule.natTolerance ?? 0}
+                              onChange={(e) =>
+                                handleUpdateMarkingRule(activeStage.id, idx, {
+                                  natTolerance: Number(e.target.value) || 0
+                                })
+                              }
+                              className="w-20 text-xs px-2 py-1 rounded-lg bg-[var(--bg-panel)] border border-[var(--ink-border)] font-mono"
+                            />
+                          </td>
+                          <td className="p-2.5 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteMarkingRule(activeStage.id, idx)}
+                              className="p-1 text-rose-500 hover:text-rose-700"
+                              title="Delete rule"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {currentProfile.stages.length > 1 && (
+                <div className="pt-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteStage(activeStage.id)}
+                    className="px-3 py-1.5 rounded-xl border border-rose-400 text-rose-600 hover:bg-rose-50 text-xs font-bold"
+                  >
+                    Delete Stage
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Main Settings Form */}
       <form onSubmit={handleSave} className="space-y-6">
-        {/* Global Exam Info */}
+        {/* Overall Exam Target & Constraints */}
         <div className="p-5 bg-[var(--bg-panel)] rounded-2xl border-2 border-[var(--ink-border)] shadow-manga space-y-4">
           <h3 className="font-display text-sm font-bold text-[var(--ink)] dark:text-[var(--text-main)]">
-            Overall Exam Target & Constraints
+            Overall Exam Target & Constraints (Active Default)
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
@@ -532,6 +1094,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       </form>
 
+      {/* Manga Icon & Tone Customization */}
+      <MangaIconSettings />
+
       {/* Database Management & Backup */}
       <div className="p-6 bg-[var(--bg-panel)] rounded-2xl border-2 border-[var(--ink-border)] shadow-manga space-y-4">
         <div className="flex items-center justify-between">
@@ -548,7 +1113,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
-          {/* Export JSON */}
           <button
             type="button"
             onClick={exportAllDataAsJson}
@@ -558,14 +1122,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <span>Export JSON Backup</span>
           </button>
 
-          {/* Import JSON */}
           <label className="flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-[var(--ink-border)] bg-[var(--bg-surface)] hover:bg-[var(--sakura-soft)] text-xs font-bold cursor-pointer transition-all shadow-manga-sm hover:-translate-y-0.5">
             <Upload className="w-4 h-4 text-[var(--sakura)]" />
             <span>Restore Backup</span>
             <input type="file" accept=".json" onChange={handleImportJson} className="hidden" />
           </label>
 
-          {/* Repair Mistakes */}
           <button
             type="button"
             onClick={handleStartRepairDryRun}
@@ -576,7 +1138,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <span>Repair Existing Mistakes</span>
           </button>
 
-          {/* Open Data Intake Modal */}
           {onOpenDataIntake && (
             <button
               type="button"

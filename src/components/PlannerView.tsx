@@ -6,7 +6,8 @@ import {
   PaperAttempt,
   PaperTest,
   StudyTask,
-  TaskPriority
+  TaskPriority,
+  QuestionType
 } from '../types';
 import {
   calculateAttemptsNeeded,
@@ -14,7 +15,12 @@ import {
   calculateWhatIfProjections,
   calculateTimePlan,
   calculateGapAnalysis,
-  generateAccuracyTierCurves
+  generateAccuracyTierCurves,
+  calculateQuestionTypeBreakEven,
+  recommendAttemptStrategy,
+  calculateSyllabusScoreDelta,
+  QuestionTypeAttemptStrategy,
+  SyllabusScoreDeltaResult
 } from '../utils/planner';
 import { calculateTimeAnalysis, calculateRepeatedMistakes } from '../utils/insights';
 import { calculateTopicMastery, TopicEvidence, TopicMasteryStatus } from '../utils/topicMastery';
@@ -222,6 +228,107 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
     return calculateGapAnalysis(settings.targetScore, Number(recentAvg.toFixed(2)), sillyLost, topWeakTopicLoss);
   }, [mocks, mistakes, settings, masteryMatrix.weakTopics]);
 
+  // Question-Type Attempt Strategies & Break-Even Math (SPEC A item 7)
+  const questionTypeStrategies = useMemo<QuestionTypeAttemptStrategy[]>(() => {
+    const typeCounts: Record<string, { correct: number; total: number }> = {
+      MCQ_1: { correct: 0, total: 0 },
+      MCQ_2: { correct: 0, total: 0 },
+      MSQ: { correct: 0, total: 0 },
+      NAT: { correct: 0, total: 0 },
+      descriptive: { correct: 0, total: 0 }
+    };
+
+    for (const m of mistakes) {
+      const qType = m.questionType || 'MCQ';
+      const key = qType === 'MCQ' ? (m.marks === 2 ? 'MCQ_2' : 'MCQ_1') : qType;
+      if (!typeCounts[key]) typeCounts[key] = { correct: 0, total: 0 };
+      typeCounts[key].total++;
+      if (m.resultType === 'Correct-but-slow') {
+        typeCounts[key].correct++;
+      }
+    }
+
+    const fallbackAcc = rollingSectionAccuracy || 75;
+
+    const getAcc = (key: string, baselineDefault: number) => {
+      const tc = typeCounts[key];
+      if (tc && tc.total >= 3) {
+        return Math.round((tc.correct / tc.total) * 100);
+      }
+      return baselineDefault;
+    };
+
+    const mcq1Acc = getAcc('MCQ_1', fallbackAcc);
+    const mcq2Acc = getAcc('MCQ_2', Math.max(30, fallbackAcc - 5));
+    const msqAcc = getAcc('MSQ', Math.max(30, fallbackAcc - 15));
+    const natAcc = getAcc('NAT', Math.max(30, fallbackAcc - 10));
+    const descAcc = getAcc('descriptive', fallbackAcc);
+
+    return [
+      recommendAttemptStrategy({
+        questionType: 'MCQ',
+        marks: 1,
+        negativeMarks: 1 / 3,
+        historicalAccuracyPercent: mcq1Acc
+      }),
+      recommendAttemptStrategy({
+        questionType: 'MCQ',
+        marks: 2,
+        negativeMarks: 2 / 3,
+        historicalAccuracyPercent: mcq2Acc
+      }),
+      recommendAttemptStrategy({
+        questionType: 'MSQ',
+        marks: 2,
+        negativeMarks: 0,
+        historicalAccuracyPercent: msqAcc
+      }),
+      recommendAttemptStrategy({
+        questionType: 'NAT',
+        marks: 2,
+        negativeMarks: 0,
+        historicalAccuracyPercent: natAcc
+      }),
+      recommendAttemptStrategy({
+        questionType: 'descriptive',
+        marks: 10,
+        negativeMarks: 0,
+        historicalAccuracyPercent: descAcc
+      })
+    ];
+  }, [mistakes, rollingSectionAccuracy]);
+
+  // Target vs Current Score Delta by Syllabus Weight & Hit Rate (SPEC A item 7)
+  const syllabusDeltaAnalysis = useMemo<SyllabusScoreDeltaResult>(() => {
+    const recentMocks = mocks.slice(-3);
+    const currentScore = recentMocks.length > 0
+      ? Number((recentMocks.reduce((sum, m) => sum + m.totalNetScore, 0) / recentMocks.length).toFixed(1))
+      : 0;
+
+    const topicList: Array<{ name: string; weight: number }> = [];
+    for (const sec of settings.sections) {
+      const secWeight = sec.totalQuestions * sec.marksPerCorrect;
+      const count = Math.max(1, sec.topics.length);
+      const perTopicWeight = Number((secWeight / count).toFixed(1));
+      for (const t of sec.topics) {
+        topicList.push({ name: t, weight: perTopicWeight });
+      }
+    }
+
+    const hitRatesMap: Record<string, { hitRate: number }> = {};
+    for (const t of masteryMatrix.allTopics) {
+      hitRatesMap[t.topic] = { hitRate: t.accuracy };
+    }
+
+    return calculateSyllabusScoreDelta({
+      targetScore: settings.targetScore,
+      currentScore,
+      topics: topicList,
+      topicHitRates: hitRatesMap,
+      targetHitRate: 85
+    });
+  }, [mocks, settings, masteryMatrix.allTopics]);
+
   // Rolling Accuracy Centered Curves for Selected Section
   const rollingTiers = useMemo<[number, number, number]>(() => {
     const base = Math.max(20, Math.min(90, rollingSectionAccuracy));
@@ -383,6 +490,165 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
 
         <div className="p-3 rounded-xl bg-[var(--peach)]/20 border border-[var(--ink-border)]/40 text-xs text-[var(--ink)] dark:text-[var(--text-main)] font-medium leading-relaxed">
           💡 <span className="font-bold">{gapAnalysis.summarySentence}</span>
+        </div>
+      </div>
+
+      {/* Question-Type Strategy & Break-Even Math (SPEC A item 7) */}
+      <div className="p-6 bg-[var(--bg-panel)] rounded-2xl border-2 border-[var(--border-subtle)] shadow-manga space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-4">
+          <div>
+            <h3 className="font-display text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+              <Zap className="w-5 h-5 text-[var(--action-primary)]" />
+              <span>Question-Type Strategy & Break-Even Math</span>
+            </h3>
+            <p className="text-xs text-[var(--text-muted)]">
+              Break-even accuracy math = negativeMarks / (marks + negativeMarks). Calibrated attempt advice per question type.
+            </p>
+          </div>
+          <span className="text-[10px] font-mono px-2.5 py-1 rounded bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--action-primary)] font-bold">
+            SPEC A Marking Engine
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {questionTypeStrategies.map((strat, idx) => {
+            const isAggressive = strat.strategy === 'aggressive';
+            const isSelective = strat.strategy === 'selective';
+            return (
+              <div
+                key={idx}
+                className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-3 flex flex-col justify-between"
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-display font-bold text-sm text-[var(--text-primary)]">
+                      {strat.questionType} ({strat.marks}M)
+                    </span>
+                    <span
+                      className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold border ${
+                        isAggressive
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                          : isSelective
+                          ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30'
+                          : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30'
+                      }`}
+                    >
+                      {strat.badgeLabel}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-1.5 text-center py-1">
+                    <div className="p-2 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)]">
+                      <span className="text-[9px] font-mono text-[var(--text-muted)] block uppercase">Break-Even</span>
+                      <span className="font-mono font-bold text-xs text-[var(--text-primary)]">
+                        {strat.breakEvenAccuracyPercent}%
+                      </span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)]">
+                      <span className="text-[9px] font-mono text-[var(--text-muted)] block uppercase">Hist. Acc</span>
+                      <span className="font-mono font-bold text-xs text-[var(--action-primary)]">
+                        {strat.historicalAccuracyPercent}%
+                      </span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)]">
+                      <span className="text-[9px] font-mono text-[var(--text-muted)] block uppercase">EV / Q</span>
+                      <span className={`font-mono font-bold text-xs ${strat.expectedValuePerAttempt >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500'}`}>
+                        {strat.expectedValuePerAttempt >= 0 ? `+${strat.expectedValuePerAttempt}` : strat.expectedValuePerAttempt}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="text-[10px] font-mono text-[var(--text-muted)] flex items-center justify-between">
+                    <span>Penalty: {strat.negativeMarks > 0 ? `-${strat.negativeMarks.toFixed(2)}` : '0 (None)'}</span>
+                    <span>Mark: +{strat.marks}</span>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-[var(--text-muted)] leading-relaxed border-t border-[var(--border-subtle)] pt-2">
+                  {strat.actionGuidance}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Syllabus Weight & Hit Rate Score Delta Breakdown (SPEC A item 7) */}
+      <div className="p-6 bg-[var(--bg-panel)] rounded-2xl border-2 border-[var(--border-subtle)] shadow-manga space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-4">
+          <div>
+            <h3 className="font-display text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-[var(--action-primary)]" />
+              <span>Target vs Current Score Delta by Syllabus Weight</span>
+            </h3>
+            <p className="text-xs text-[var(--text-muted)]">
+              Syllabus weight breakdown crossed with historical hit rate to prioritize high-yield recovery topics.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono px-3 py-1 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--action-primary)] font-bold">
+              Delta to Target: +{syllabusDeltaAnalysis.totalScoreDelta} pts
+            </span>
+          </div>
+        </div>
+
+        <div className="p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)]">
+          <span className="font-bold">Summary: </span>
+          <span>{syllabusDeltaAnalysis.summarySentence}</span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs text-left">
+            <thead>
+              <tr className="border-b border-[var(--border-subtle)] text-[var(--text-muted)] font-mono">
+                <th className="py-2.5 px-3">Syllabus Topic</th>
+                <th className="py-2.5 px-3">Weight</th>
+                <th className="py-2.5 px-3">Hit Rate</th>
+                <th className="py-2.5 px-3">Current Score</th>
+                <th className="py-2.5 px-3">Potential</th>
+                <th className="py-2.5 px-3">Recoverable Delta</th>
+                <th className="py-2.5 px-3">Priority</th>
+                <th className="py-2.5 px-3">Recommended Strategy</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--border-subtle)]">
+              {syllabusDeltaAnalysis.topics.slice(0, 10).map((t) => (
+                <tr key={t.topic} className="hover:bg-[var(--bg-surface)] transition-colors">
+                  <td className="py-2.5 px-3 font-bold text-[var(--text-primary)]">{t.topic}</td>
+                  <td className="py-2.5 px-3 font-mono">{t.syllabusWeight} marks</td>
+                  <td className="py-2.5 px-3 font-mono font-bold">
+                    <span className={t.historicalHitRate < 50 ? 'text-rose-500' : t.historicalHitRate >= 75 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-500'}>
+                      {t.historicalHitRate}%
+                    </span>
+                  </td>
+                  <td className="py-2.5 px-3 font-mono text-[var(--text-muted)]">{t.currentEstimatedMarks}m</td>
+                  <td className="py-2.5 px-3 font-mono text-[var(--text-muted)]">{t.potentialMarks}m</td>
+                  <td className="py-2.5 px-3 font-mono font-bold text-[var(--action-primary)]">
+                    +{t.recoverableDelta}m
+                  </td>
+                  <td className="py-2.5 px-3">
+                    <span
+                      className={`inline-block px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                        t.priority === 'High'
+                          ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                          : t.priority === 'Medium'
+                          ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                          : 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border border-slate-500/20'
+                      }`}
+                    >
+                      {t.priority}
+                    </span>
+                  </td>
+                  <td className="py-2.5 px-3 text-[11px] text-[var(--text-muted)] max-w-xs">{t.recommendation}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {syllabusDeltaAnalysis.topics.length > 10 && (
+            <p className="text-xs text-center text-[var(--text-muted)] pt-3 font-mono">
+              Showing top 10 of {syllabusDeltaAnalysis.topics.length} syllabus topics ranked by recoverable marks.
+            </p>
+          )}
         </div>
       </div>
 

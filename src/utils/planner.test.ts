@@ -6,7 +6,10 @@ import {
   generateCurveData,
   calculateWhatIfProjections,
   calculateTimePlan,
-  calculateGapAnalysis
+  calculateGapAnalysis,
+  calculateQuestionTypeBreakEven,
+  recommendAttemptStrategy,
+  calculateSyllabusScoreDelta
 } from './planner';
 
 describe('Target Strategy Planner Math Module', () => {
@@ -202,6 +205,144 @@ describe('Target Strategy Planner Math Module', () => {
       expect(gap.sillyRecoverable).toBe(4.5);
       expect(gap.weakTopicRecoverable).toBe(5);
       expect(gap.summarySentence).toContain('+10 marks');
+    });
+  });
+
+  describe('Question-Type Break-Even Accuracy Math (SPEC A item 7)', () => {
+    it('calculates 25% break-even for GATE 1-mark MCQ with 1/3 negative marking', () => {
+      // negative = 1/3 = 0.33333...
+      // BE = (1/3) / (1 + 1/3) = (1/3) / (4/3) = 1/4 = 25%
+      const res = calculateQuestionTypeBreakEven('MCQ', 1, 1 / 3);
+      expect(res.breakEvenAccuracyPercent).toBe(25);
+      expect(res.formula).toContain('25%');
+    });
+
+    it('calculates 25% break-even for GATE 2-mark MCQ with 2/3 negative marking', () => {
+      // BE = (2/3) / (2 + 2/3) = (2/3) / (8/3) = 1/4 = 25%
+      const res = calculateQuestionTypeBreakEven('MCQ', 2, 2 / 3);
+      expect(res.breakEvenAccuracyPercent).toBe(25);
+    });
+
+    it('calculates 0% break-even for MSQ, NAT, and descriptive (zero negative marking)', () => {
+      const msq = calculateQuestionTypeBreakEven('MSQ', 2);
+      expect(msq.breakEvenAccuracyPercent).toBe(0);
+      expect(msq.negativeMarks).toBe(0);
+
+      const nat = calculateQuestionTypeBreakEven('NAT', 2);
+      expect(nat.breakEvenAccuracyPercent).toBe(0);
+      expect(nat.negativeMarks).toBe(0);
+
+      const desc = calculateQuestionTypeBreakEven('descriptive', 10);
+      expect(desc.breakEvenAccuracyPercent).toBe(0);
+      expect(desc.negativeMarks).toBe(0);
+    });
+
+    it('calculates 20% break-even for 1.25 mark / 0.3125 negative (SEBI Phase 1)', () => {
+      // 0.3125 / (1.25 + 0.3125) = 0.3125 / 1.5625 = 20%
+      const sebi = calculateQuestionTypeBreakEven('MCQ', 1.25, 0.3125);
+      expect(sebi.breakEvenAccuracyPercent).toBe(20);
+    });
+  });
+
+  describe('Recommended Attempt Strategy per Question Type (SPEC A item 7)', () => {
+    it('recommends aggressive strategy when accuracy is well above break-even', () => {
+      // BE for 1-mark MCQ is 25%, accuracy 75% > 25% + 10%
+      const strat = recommendAttemptStrategy({
+        questionType: 'MCQ',
+        marks: 1,
+        negativeMarks: 1 / 3,
+        historicalAccuracyPercent: 75
+      });
+      expect(strat.strategy).toBe('aggressive');
+      expect(strat.badgeLabel).toBe('Aggressive Attempt');
+      expect(strat.expectedValuePerAttempt).toBeGreaterThan(0.5);
+    });
+
+    it('recommends selective strategy when accuracy is marginally above break-even', () => {
+      // BE is 25%, accuracy 30% is within [25%, 35%]
+      const strat = recommendAttemptStrategy({
+        questionType: 'MCQ',
+        marks: 1,
+        negativeMarks: 1 / 3,
+        historicalAccuracyPercent: 30,
+        thresholdBuffer: 10
+      });
+      expect(strat.strategy).toBe('selective');
+      expect(strat.badgeLabel).toBe('Selective Attempt');
+      expect(strat.actionGuidance).toContain('eliminate at least 1-2 options');
+    });
+
+    it('recommends skip strategy when accuracy is below break-even', () => {
+      // BE is 25%, accuracy 15% < 25%
+      const strat = recommendAttemptStrategy({
+        questionType: 'MCQ',
+        marks: 1,
+        negativeMarks: 1 / 3,
+        historicalAccuracyPercent: 15
+      });
+      expect(strat.strategy).toBe('skip');
+      expect(strat.badgeLabel).toBe('Skip / High Risk');
+      expect(strat.expectedValuePerAttempt).toBeLessThan(0);
+      expect(strat.actionGuidance).toContain('Skip guesses');
+    });
+
+    it('always recommends aggressive strategy for zero negative questions (NAT & MSQ)', () => {
+      const natStrat = recommendAttemptStrategy({
+        questionType: 'NAT',
+        marks: 2,
+        historicalAccuracyPercent: 40
+      });
+      expect(natStrat.strategy).toBe('aggressive');
+      expect(natStrat.breakEvenAccuracyPercent).toBe(0);
+
+      const msqStrat = recommendAttemptStrategy({
+        questionType: 'MSQ',
+        marks: 2,
+        historicalAccuracyPercent: 50
+      });
+      expect(msqStrat.strategy).toBe('aggressive');
+      expect(msqStrat.breakEvenAccuracyPercent).toBe(0);
+      expect(msqStrat.actionGuidance).toContain('NO partial credit');
+    });
+  });
+
+  describe('Target vs Current Score Delta by Syllabus Weight & Hit Rate (SPEC A item 7)', () => {
+    it('calculates score delta and ranks high-yield topics', () => {
+      const topics = [
+        { name: 'Databases', weight: 8 },
+        { name: 'Computer Networks', weight: 9 },
+        { name: 'Discrete Math', weight: 7 }
+      ];
+      const hitRates = {
+        Databases: { attempted: 20, correct: 8, hitRate: 40 }, // 40% hit rate, 8 marks -> current 3.2, potential 85% is 6.8 -> recoverable 3.6
+        'Computer Networks': { attempted: 30, correct: 24, hitRate: 80 }, // 80% hit rate, 9 marks -> current 7.2, potential 7.65 -> recoverable 0.45
+        'Discrete Math': { attempted: 15, correct: 7, hitRate: 46.7 } // 46.7% hit rate, 7 marks -> recoverable ~2.68
+      };
+
+      const result = calculateSyllabusScoreDelta({
+        targetScore: 65,
+        currentScore: 48,
+        topics,
+        topicHitRates: hitRates,
+        targetHitRate: 85
+      });
+
+      expect(result.totalScoreDelta).toBe(17);
+      expect(result.topics[0].topic).toBe('Databases');
+      expect(result.topics[0].priority).toBe('High');
+      expect(result.topics[0].recoverableDelta).toBeGreaterThan(3.0);
+      expect(result.totalRecoverableMarks).toBeGreaterThan(6.0);
+      expect(result.summarySentence).toContain('Target delta is +17 marks');
+    });
+
+    it('handles target already achieved', () => {
+      const result = calculateSyllabusScoreDelta({
+        targetScore: 50,
+        currentScore: 55,
+        topics: [{ name: 'Algorithms', weight: 10 }]
+      });
+      expect(result.totalScoreDelta).toBe(0);
+      expect(result.summarySentence).toContain('Target achieved');
     });
   });
 });
