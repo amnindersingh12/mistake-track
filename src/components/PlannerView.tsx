@@ -886,7 +886,7 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {settings.sections.map((sec) => {
             const state = whatIfInputs[sec.id] || { attempts: 25, accuracy: 80 };
-            const proj = whatIfProjections.sections.find((p) => p.sectionId === sec.id);
+            const proj = whatIfProjections.sections.find((p: any) => p.sectionId === sec.id);
 
             return (
               <div key={sec.id} className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-3">

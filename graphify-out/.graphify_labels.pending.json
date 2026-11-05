@@ -1,10 +1,15 @@
 {
-  "0": "db/db.ts",
+  "0": "index.ts",
   "5": "test_visual_qa.cjs",
   "11": "package.json",
   "13": "ref_path",
   "16": "vitest",
+  "17": "exportImport.ts",
+  "30": "@testing-library/react",
   "32": "ScreenshotInput.tsx",
+  "33": "puppeteer-core",
+  "34": "QuestionRenderer.tsx",
+  "35": "@types/katex@^0.16.8",
   "42": "bookmarklet.js",
   "43": "tailwind.config.js"
 }

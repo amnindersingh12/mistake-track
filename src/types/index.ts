@@ -2,15 +2,34 @@ export type ResultType = 'Wrong' | 'Left unattempted' | 'Correct-but-slow';
 export type MistakeStatus = 'New' | 'Active' | 'Reviewing' | 'Mastered' | 'inbox';
 export type Difficulty = 'Easy' | 'Medium' | 'Hard';
 export type AttemptType = 'mock' | 'pyq' | 'memory-based';
+export type QuestionType = 'MCQ' | 'MSQ' | 'NAT' | 'descriptive';
 
-export type UserRank = 'Rookie' | 'Apprentice' | 'Adept' | 'Ace' | 'Legend';
+export const CS_ERROR_TYPES = [
+  'Concept gap',
+  'Trace/execution error',
+  'Misread constraint',
+  'Missed MSQ option',
+  'NAT calculation slip',
+  'Formula/definition forgotten',
+  'Time pressure',
+  'Blind guess',
+  'Overthinking',
+  'Trick not known',
+  'Calculation / algebra error',
+  'Silly slip / bubbling mistake',
+  'Unclassified'
+] as const;
 
-export function calculateUserRank(masteredCount: number): { rank: UserRank; nextTarget: number; progress: number } {
-  if (masteredCount >= 50) return { rank: 'Legend', nextTarget: 50, progress: 100 };
-  if (masteredCount >= 25) return { rank: 'Ace', nextTarget: 50, progress: Math.round(((masteredCount - 25) / 25) * 100) };
-  if (masteredCount >= 10) return { rank: 'Adept', nextTarget: 25, progress: Math.round(((masteredCount - 10) / 15) * 100) };
-  if (masteredCount >= 3) return { rank: 'Apprentice', nextTarget: 10, progress: Math.round(((masteredCount - 3) / 7) * 100) };
-  return { rank: 'Rookie', nextTarget: 3, progress: Math.round((masteredCount / 3) * 100) };
+export type CSErrorType = typeof CS_ERROR_TYPES[number];
+
+export type UserRank = 'Aspirant' | 'Novice Scholar' | 'Code Ninja' | 'Special Grade Candidate' | 'GATE/Officer Topper' | 'Rookie' | 'Apprentice' | 'Adept' | 'Ace' | 'Legend';
+
+export function calculateUserRank(masteredCountOrXp: number): { rank: UserRank; nextTarget: number; progress: number } {
+  if (masteredCountOrXp >= 1000) return { rank: 'GATE/Officer Topper', nextTarget: 1000, progress: 100 };
+  if (masteredCountOrXp >= 500) return { rank: 'Special Grade Candidate', nextTarget: 1000, progress: Math.round(((masteredCountOrXp - 500) / 500) * 100) };
+  if (masteredCountOrXp >= 250) return { rank: 'Code Ninja', nextTarget: 500, progress: Math.round(((masteredCountOrXp - 250) / 250) * 100) };
+  if (masteredCountOrXp >= 100) return { rank: 'Novice Scholar', nextTarget: 250, progress: Math.round(((masteredCountOrXp - 100) / 150) * 100) };
+  return { rank: 'Aspirant', nextTarget: 100, progress: Math.round((masteredCountOrXp / 100) * 100) };
 }
 
 export interface SectionConfig {
@@ -50,6 +69,8 @@ export interface SectionPerformance {
 
 export interface MockTest {
   id?: number;
+  examId?: string;
+  stage?: string;
   name: string;
   date: string; // YYYY-MM-DD
   source: string;
@@ -77,6 +98,8 @@ export interface ReviewLog {
 
 export interface MistakeEntry {
   id?: number;
+  examId?: string;
+  stage?: string;
   mockId?: number;
   mockName: string;
   attemptType?: AttemptType;
@@ -90,6 +113,18 @@ export interface MistakeEntry {
   questionText: string;
   questionImage?: string; // Data URL Base64 or image key
   imageId?: number;
+  questionType?: QuestionType;
+  marks?: number;
+  natTolerance?: number;
+  natAnswer?: number;
+  correctNatAnswer?: { min: number; max: number } | number;
+  msqSelectedOptions?: string[];
+  msqCorrectOptions?: string[];
+  msqWrongOptions?: string[];
+  msqMissedOptions?: string[];
+  linkedNoteIds?: number[];
+  linkedPatternIds?: number[];
+  linkedPyqIds?: number[];
   myAnswer: string;
   correctAnswer: string;
   resultType: ResultType;
@@ -171,6 +206,8 @@ export interface ImportBatch {
 
 export interface PaperTest {
   id?: number;
+  examId?: string;
+  stage?: string;
   examName: string;
   year: number;
   shift?: string;
@@ -245,18 +282,179 @@ export interface StudyTask {
   updatedAt?: string;
 }
 
+export interface QuestionTypeMarkingRule {
+  questionType: QuestionType;
+  marks: number;
+  negativeMarks: number;
+  allowPartialCredit?: boolean;
+  natTolerance?: number;
+}
+
+export interface ExamStage {
+  id: string;
+  name: string;
+  durationMinutes: number;
+  totalMarks: number;
+  cutoffMarks?: number;
+  sections: SectionConfig[];
+  markingRules: QuestionTypeMarkingRule[];
+  isUnverified?: boolean;
+}
+
 export interface ExamProfile {
   id: string;
   name: string;
   examName: string;
-  totalTimeMinutes: number;
-  targetScore: number;
-  overallCutoff: number;
-  sections: SectionConfig[];
-  errorTypes: string[];
+  targetYear?: number;
+  stages: ExamStage[];
+  sourceUrl?: string;
+  unverifiedFields: string[];
   isDefault?: boolean;
   createdAt: string;
   updatedAt?: string;
+  // Legacy / fallback fields:
+  totalTimeMinutes?: number;
+  targetScore?: number;
+  overallCutoff?: number;
+  sections?: SectionConfig[];
+  errorTypes?: string[];
+}
+
+export type TopicCategory = 'Core CS' | 'IT-officer' | 'Common';
+
+export interface CanonicalTopic {
+  id: string;
+  name: string;
+  category: TopicCategory;
+  subtopics: string[];
+  examTags: string[];
+  overlapExams: string[];
+  weightage?: Record<string, number>;
+}
+
+export type SyllabusStatus = 'not_started' | 'in_progress' | 'mastered';
+
+export interface SyllabusProgress {
+  id?: number;
+  examId: string;
+  stage: string;
+  topicId: string;
+  status: SyllabusStatus;
+  confidence: number;
+  lastRevised?: string;
+  pyqsSolved: number;
+  totalPyqs: number;
+  updatedAt: string;
+}
+
+export interface PYQ {
+  id?: number;
+  examId: string;
+  year: number;
+  stage: string;
+  shift?: string;
+  topicId: string;
+  subtopic?: string;
+  questionNumber: number;
+  questionText: string;
+  questionImage?: string;
+  questionType: QuestionType;
+  marks: number;
+  negativeMarks?: number;
+  options?: string[];
+  correctAnswer: string;
+  natAnswerRange?: { min: number; max: number };
+  solutionText?: string;
+  source: 'official' | 'memory-based';
+  sourceUrl?: string;
+  isUnverified?: boolean;
+  firstAttemptCorrect?: boolean;
+  attemptedCount: number;
+  createdAt: string;
+}
+
+export interface StudyNote {
+  id?: number;
+  title: string;
+  topicId: string;
+  subtopic?: string;
+  content: string; // Markdown + KaTeX + code
+  tags: string[];
+  linkedMistakeIds: number[];
+  linkedPyqIds: number[];
+  linkedPatternIds: number[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Pattern {
+  id?: number;
+  title: string;
+  topicId: string;
+  description: string;
+  trickOrTrap: string;
+  linkedMistakeIds: number[];
+  linkedPyqIds: number[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type StudySessionType = 'reading' | 'practice' | 'mock' | 'review';
+
+export interface StudySession {
+  id?: number;
+  topicId?: string;
+  examId?: string;
+  type: StudySessionType;
+  durationMinutes: number;
+  startedAt: string;
+  endedAt: string;
+  notes?: string;
+}
+
+export interface AvailabilityPhase {
+  id?: number;
+  name: 'regular' | 'intensive' | 'last-month' | string;
+  startDate: string;
+  endDate: string;
+  targetHoursPerWeek: number;
+  dailyHoursAllocation: Record<string, number>;
+  weekendMockSlotHours: number;
+  isCurrent?: boolean;
+}
+
+export type QuestType = 'daily' | 'weekly' | 'boss';
+
+export interface Quest {
+  id: string;
+  type: QuestType;
+  title: string;
+  description: string;
+  target: number;
+  current: number;
+  xpReward: number;
+  completed: boolean;
+  expiresAt: string;
+}
+
+export interface UserXPState {
+  id: string; // 'current'
+  totalXp: number;
+  currentLevel: number;
+  rankTitle: string;
+  currentStreak: number;
+  streakFreezesAvailable: number;
+  lastActiveDate: string;
+  updatedAt: string;
+}
+
+export interface SkillTreeNode {
+  id: string;
+  subject: string;
+  title: string;
+  level: number;
+  prerequisites: string[];
+  status: 'locked' | 'unlocked' | 'in_progress' | 'mastered';
 }
 
 export interface StudyBridgeSourceMetadata {
