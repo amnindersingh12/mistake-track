@@ -1,13 +1,13 @@
-# Graph Report - proj-track3  (2026-11-05)
+# Graph Report - proj-track4  (2026-11-05)
 
 ## Corpus Check
-- 101 files · ~108,621 words
+- 100 files · ~104,633 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 11 file(s) not represented in the graph (top: (none) 6, .css 2, .plist 2)
 
 ## Summary
-- 732 nodes · 1761 edges · 45 communities (33 shown, 12 thin omitted)
-- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 11 edges (avg confidence: 0.85)
+- 713 nodes · 1721 edges · 49 communities (39 shown, 10 thin omitted)
+- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 12 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
@@ -16,12 +16,12 @@
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- MistakeEntry
+- index.ts
 - App Routing & Views
 - Scrapling FastAPI Service
 - Data Intake & Parsing Modal
 - Planner & Strategy View
-- ref_fs
+- test_visual_qa.cjs
 - Core Runtime Dependencies
 - Full Mock Scanner Script
 - Safari Extension Manifest
@@ -29,11 +29,11 @@
 - macOS Swift Container App
 - package.json
 - Testbook DOM Adapter
-- topicGraph.ts
+- ref_path
 - Mock Data Cleaning Scripts
 - In-Page Testbook Exporter
-- vitest
-- index.ts
+- MocksView.tsx
+- exportImport.ts
 - NPM Lifecycle Scripts
 - Extension Icon Generator
 - Extension Popup Logic
@@ -48,26 +48,30 @@
 - Testbook Content Adapter
 - @testing-library/react
 - Puppeteer Browser Automation
-- @testing-library/user-event@^14.6.8
+- ScreenshotInput.tsx
 - puppeteer-core
-- PYQView.tsx
-- @types/katex@^0.16.8
+- CheatSheetView.tsx
+- MistakeEntry
 - React DOM Types
 - Safari Extension Build Script
 - Scripts Package Metadata
-- typescript@^5.8.2
+- react
+- ExamSettings
+- getTodayDateStr
+- package.json
+- @testing-library/user-event@^14.6.8
 
 ## God Nodes (most connected - your core abstractions)
-1. `MistakeEntry` - 36 edges
-2. `ExamSettings` - 34 edges
-3. `react` - 33 edges
-4. `MockTest` - 27 edges
-5. `getTodayDateStr()` - 27 edges
-6. `vitest` - 24 edges
-7. `App()` - 23 edges
-8. `Mascot()` - 23 edges
-9. `db` - 22 edges
-10. `lucide-react` - 21 edges
+1. `MistakeEntry` - 41 edges
+2. `ExamSettings` - 35 edges
+3. `react` - 32 edges
+4. `Mascot()` - 27 edges
+5. `MockTest` - 27 edges
+6. `getTodayDateStr()` - 27 edges
+7. `vitest` - 24 edges
+8. `App()` - 23 edges
+9. `MistakeNotebookDatabase` - 21 edges
+10. `db` - 21 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `Oliveboard Mock Test Exporter` --exports_compatible_json_for--> `Mistake Notebook & Mock Analyzer`  [EXTRACTED]
@@ -76,23 +80,23 @@
   safari-extension/README.md → README.md
 - `SettingsViewProps` --references--> `ExamSettings`  [EXTRACTED]
   src/components/SettingsView.tsx → src/types/index.ts
-- `MockCsvParseResult` --references--> `MockTest`  [EXTRACTED]
-  src/utils/dataIntake.ts → src/types/index.ts
-- `MistakeCsvParseResult` --references--> `MistakeEntry`  [EXTRACTED]
-  src/utils/dataIntake.ts → src/types/index.ts
+- `test_question_paper_parser()` --calls--> `parse_question_paper()`  [EXTRACTED]
+  scrapling-service/tests/test_parsers.py → scrapling-service/parsers/question_paper_parser.py
+- `test_solution_parser()` --calls--> `parse_solution()`  [EXTRACTED]
+  scrapling-service/tests/test_parsers.py → scrapling-service/parsers/solution_parser.py
 
 ## Import Cycles
 - None detected.
 
-## Communities (45 total, 12 thin omitted)
+## Communities (49 total, 10 thin omitted)
 
-### Community 0 - "MistakeEntry"
-Cohesion: 0.09
-Nodes (50): lucide-react, react, CheatSheetView(), CheatSheetViewProps, DashboardView(), DashboardViewProps, GlobalSearchModalProps, SearchResultItem (+42 more)
+### Community 0 - "index.ts"
+Cohesion: 0.07
+Nodes (36): DEFAULT_CS_TOPICS, DEFAULT_ENGLISH_TOPICS, DEFAULT_ERROR_TYPES, DEFAULT_GENERAL_AWARENESS_TOPICS, DEFAULT_QUANT_TOPICS, DEFAULT_QUESTS, DEFAULT_REASONING_TOPICS, MistakeNotebookDatabase (+28 more)
 
 ### Community 1 - "App Routing & Views"
-Cohesion: 0.09
-Nodes (45): DataIntakeModal(), DataIntakeModalProps, TabType, ERROR_TYPE_SHORTCUTS, ImportInboxView(), ImportInboxViewProps, isOptionCorrect(), MocksView() (+37 more)
+Cohesion: 0.10
+Nodes (39): DataIntakeModal(), DataIntakeModalProps, TabType, ERROR_TYPE_SHORTCUTS, ImportInboxView(), ImportInboxViewProps, isOptionCorrect(), extractExamNameFromMock() (+31 more)
 
 ### Community 2 - "Scrapling FastAPI Service"
 Cohesion: 0.11
@@ -100,15 +104,15 @@ Nodes (20): extract_question_paper(), extract_solution(), extract_summary(), hea
 
 ### Community 3 - "Data Intake & Parsing Modal"
 Cohesion: 0.11
-Nodes (36): App(), CheatSheetView, DashboardView, DataIntakeModal, GlobalSearchModal, ImportInboxView, KeyboardShortcutsModal, MistakesView (+28 more)
+Nodes (35): App(), CheatSheetView, DashboardView, DataIntakeModal, GlobalSearchModal, ImportInboxView, KeyboardShortcutsModal, MistakesView (+27 more)
 
 ### Community 4 - "Planner & Strategy View"
-Cohesion: 0.09
-Nodes (39): PlannerView(), PlannerInput, PlannerResult, SectionConfig, TaskPriority, WhatIfResult, WhatIfSectionInput, AccuracyVsAttemptsPoint (+31 more)
+Cohesion: 0.11
+Nodes (35): PlannerView(), PaperAttempt, SectionConfig, AccuracyVsAttemptsPoint, calculateAccuracyVsAttempts(), calculateErrorDistribution(), calculateImprovementMetrics(), calculateMarksLostBreakdown() (+27 more)
 
-### Community 5 - "ref_fs"
-Cohesion: 0.18
-Nodes (8): fs, path, puppeteer, fs, path, puppeteer, runVisualQA(), sleep()
+### Community 5 - "test_visual_qa.cjs"
+Cohesion: 0.40
+Nodes (5): fs, path, puppeteer, runVisualQA(), sleep()
 
 ### Community 6 - "Core Runtime Dependencies"
 Cohesion: 0.12
@@ -128,19 +132,19 @@ Nodes (17): compilerOptions, allowImportingTsExtensions, isolatedModules, jsx, l
 
 ### Community 10 - "macOS Swift Container App"
 Cohesion: 0.11
-Nodes (23): dependencies, canvas-confetti@^1.9.4, dexie@^4.0.11, dexie-react-hooks@^1.1.7, framer-motion@^14.9.1, katex@^0.19.1, lucide-react@^1.16.0, react@^18.3.1 (+15 more)
+Nodes (19): dependencies, canvas-confetti@^1.9.4, dexie@^4.0.11, dexie-react-hooks@^1.1.7, framer-motion@^14.9.1, katex@^0.19.1, lucide-react@^1.16.0, react@^18.3.1 (+11 more)
 
 ### Community 11 - "package.json"
-Cohesion: 0.11
-Nodes (19): devDependencies, autoprefixer@^10.4.20, jsdom@^30.1.3, postcss@^8.5.3, tailwindcss@^3.4.17, tsx@^4.23.15, @types/jsdom@^30.0.0, @types/node@^22.13.10 (+11 more)
+Cohesion: 0.12
+Nodes (17): devDependencies, tailwindcss@^3.4.17, @testing-library/react@^16.3.3, tsx@^4.23.15, @types/katex@^0.16.8, @types/node@^22.13.10, @types/react@^18.3.18, @types/react-dom@^18.3.5 (+9 more)
 
 ### Community 12 - "Testbook DOM Adapter"
 Cohesion: 0.26
 Nodes (13): chr(), cleanText(), ExtractedQuestion, ExtractedQuestionOption, ExtractedResultSummary, ExtractedSectionSummary, extractQuestionPaperDOM(), extractVisibleQuestion() (+5 more)
 
-### Community 13 - "topicGraph.ts"
-Cohesion: 0.16
-Nodes (27): OverlapMap(), OverlapMapProps, EXAM_STAGES, ExamStageOption, ProgressRing(), SyllabusView(), SyllabusViewProps, DEFAULT_CANONICAL_TOPICS (+19 more)
+### Community 13 - "ref_path"
+Cohesion: 0.33
+Nodes (3): fs, path, puppeteer
 
 ### Community 14 - "Mock Data Cleaning Scripts"
 Cohesion: 0.19
@@ -150,13 +154,13 @@ Nodes (8): activeScanState, captureSelectionFromTab(), deliveredIds, deliverPayl
 Cohesion: 0.23
 Nodes (11): cleanedData, cleanedQuestions, cleanOptionText(), defaultIn, formatExplanation(), fs, path, raw (+3 more)
 
-### Community 16 - "vitest"
-Cohesion: 0.50
-Nodes (4): vitest@^3.0.8, vitest, getContrastRatio(), getRelativeLuminance()
+### Community 16 - "MocksView.tsx"
+Cohesion: 0.43
+Nodes (5): MocksView(), AttemptType, MockSectionValidationInput, MockValidationErrors, validateMockSections()
 
-### Community 17 - "index.ts"
-Cohesion: 0.05
-Nodes (62): SettingsView(), SettingsViewProps, clearAllUserData(), DEFAULT_CS_TOPICS, DEFAULT_ENGLISH_TOPICS, DEFAULT_ERROR_TYPES, DEFAULT_GENERAL_AWARENESS_TOPICS, DEFAULT_PROFILES (+54 more)
+### Community 17 - "exportImport.ts"
+Cohesion: 0.13
+Nodes (27): SettingsView(), SettingsViewProps, clearAllUserData(), DEFAULT_PROFILES, DEFAULT_SETTINGS, applyBackup(), BACKUP_SCHEMA_VERSION, BackupImage (+19 more)
 
 ### Community 18 - "NPM Lifecycle Scripts"
 Cohesion: 0.25
@@ -203,40 +207,64 @@ Cohesion: 0.61
 Nodes (7): cleanText(), extractVisibleQuestion(), extractVisibleSummary(), inspectPage(), isElementVisible(), normalizeOptionsRaw(), parseNumber()
 
 ### Community 30 - "@testing-library/react"
-Cohesion: 0.29
-Nodes (6): fake-indexeddb@^6.2.7, @testing-library/jest-dom@^7.0.1, @testing-library/react@^16.3.3, fake-indexeddb, @testing-library/jest-dom, @testing-library/react
+Cohesion: 0.40
+Nodes (4): fake-indexeddb@^6.2.7, @testing-library/jest-dom@^7.0.1, fake-indexeddb, @testing-library/jest-dom
 
 ### Community 31 - "Puppeteer Browser Automation"
-Cohesion: 0.40
+Cohesion: 0.33
 Nodes (5): fs, path, puppeteer, run(), sleep()
+
+### Community 32 - "ScreenshotInput.tsx"
+Cohesion: 0.48
+Nodes (5): compressImage(), CompressionResult, formatBytes(), ScreenshotInput(), ScreenshotInputProps
 
 ### Community 33 - "puppeteer-core"
 Cohesion: 0.40
 Nodes (5): puppeteer-core@^25.16.0, puppeteer-core, puppeteer, run(), sleep()
 
-### Community 34 - "PYQView.tsx"
+### Community 34 - "CheatSheetView.tsx"
+Cohesion: 0.20
+Nodes (17): CheatSheetView(), CheatSheetViewProps, NotesView(), NotesViewProps, DEFAULT_PATTERN_ARCHETYPES, PatternsView(), PatternsViewProps, QuestionRenderer() (+9 more)
+
+### Community 35 - "MistakeEntry"
+Cohesion: 0.15
+Nodes (24): RFC-4180, vitest, ReviewQueueView(), ReviewQueueViewProps, MistakeEntry, downloadAnkiCsv(), escapeCsvField(), escapeHtml() (+16 more)
+
+### Community 44 - "react"
 Cohesion: 0.19
-Nodes (21): PYQView(), PYQViewProps, resolveOptionMatches(), QuestionRenderer(), QuestionRendererProps, renderFormattedContent(), renderTextWithMath(), PYQ (+13 more)
+Nodes (14): lucide-react, react, KeyboardShortcutsModal(), KeyboardShortcutsModalProps, ShortcutCategory, ShortcutItem, Mascot(), MascotMood (+6 more)
+
+### Community 45 - "ExamSettings"
+Cohesion: 0.28
+Nodes (15): DashboardViewProps, GlobalSearchModalProps, SearchResultItem, MistakesViewProps, MocksViewProps, PaperExamModalProps, PapersViewProps, PlannerViewProps (+7 more)
+
+### Community 46 - "getTodayDateStr"
+Cohesion: 0.25
+Nodes (13): @testing-library/react, DashboardView(), MistakesView(), parseQuestionTextAndOptions(), MistakeStatus, exportMistakesAsCsv(), addDaysToDate(), calculateStreak() (+5 more)
+
+### Community 47 - "package.json"
+Cohesion: 0.15
+Nodes (12): autoprefixer@^10.4.20, jsdom@^30.1.3, postcss@^8.5.3, @types/jsdom@^30.0.0, name, private, type, version (+4 more)
 
 ## Knowledge Gaps
-- **5 isolated node(s):** `Cocoa`, `os.log`, `Oliveboard Mock Test Exporter`, `Spaced Repetition (Daily Quest)`, `Scrapling Python Service`
-  These have ≤1 connection - possible missing edges. (Counts symbols only; 218 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **12 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **6 isolated node(s):** `Cocoa`, `os.log`, `RFC-4180`, `Oliveboard Mock Test Exporter`, `Spaced Repetition (Daily Quest)` (+1 more)
+  These have ≤1 connection - possible missing edges. (Counts symbols only; 217 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **10 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `vitest` connect `vitest` to `MistakeEntry`, `App Routing & Views`, `PYQView.tsx`, `Planner & Strategy View`, `macOS Swift Container App`, `Testbook DOM Adapter`, `topicGraph.ts`, `index.ts`, `Extension Icon Generator`, `Reconciliation E2E Testing`, `@testing-library/react`?**
-  _High betweenness centrality (0.127) - this node is a cross-community bridge._
-- **What connects `Cocoa`, `os.log`, `Oliveboard Mock Test Exporter` to the rest of the system?**
-  _5 weakly-connected nodes found - possible missing edges._
-- **Should `MistakeEntry` be split into smaller, more focused modules?**
-  _Cohesion score 0.08737060041407868 - nodes in this community are weakly interconnected._
-- **Why does `puppeteer-core` connect `puppeteer-core` to `ref_fs`, `macOS Swift Container App`, `Core Application Architecture`, `Flow Verification Scripts`, `Puppeteer Browser Automation`?**
-  _High betweenness centrality (0.068) - this node is a cross-community bridge._
+- **Why does `vitest` connect `MistakeEntry` to `ScreenshotInput.tsx`, `App Routing & Views`, `CheatSheetView.tsx`, `Planner & Strategy View`, `package.json`, `react`, `Testbook DOM Adapter`, `getTodayDateStr`, `package.json`, `MocksView.tsx`, `exportImport.ts`, `Extension Icon Generator`, `Reconciliation E2E Testing`, `@testing-library/react`?**
+  _High betweenness centrality (0.128) - this node is a cross-community bridge._
+- **What connects `Cocoa`, `os.log`, `RFC-4180` to the rest of the system?**
+  _6 weakly-connected nodes found - possible missing edges._
+- **Should `index.ts` be split into smaller, more focused modules?**
+  _Cohesion score 0.07435897435897436 - nodes in this community are weakly interconnected._
+- **Why does `puppeteer-core` connect `puppeteer-core` to `test_visual_qa.cjs`, `ref_path`, `package.json`, `Core Application Architecture`, `Flow Verification Scripts`, `Puppeteer Browser Automation`?**
+  _High betweenness centrality (0.069) - this node is a cross-community bridge._
 - **Should `App Routing & Views` be split into smaller, more focused modules?**
-  _Cohesion score 0.09224318658280922 - nodes in this community are weakly interconnected._
-- **Why does `react` connect `MistakeEntry` to `App Routing & Views`, `PYQView.tsx`, `Data Intake & Parsing Modal`, `Planner & Strategy View`, `macOS Swift Container App`, `topicGraph.ts`, `index.ts`?**
-  _High betweenness centrality (0.063) - this node is a cross-community bridge._
+  _Cohesion score 0.10034013605442177 - nodes in this community are weakly interconnected._
+- **Why does `react` connect `react` to `ScreenshotInput.tsx`, `App Routing & Views`, `CheatSheetView.tsx`, `Data Intake & Parsing Modal`, `Planner & Strategy View`, `MistakeEntry`, `macOS Swift Container App`, `ExamSettings`, `getTodayDateStr`, `package.json`, `MocksView.tsx`, `exportImport.ts`?**
+  _High betweenness centrality (0.060) - this node is a cross-community bridge._
 - **Should `Scrapling FastAPI Service` be split into smaller, more focused modules?**
   _Cohesion score 0.10531400966183575 - nodes in this community are weakly interconnected._

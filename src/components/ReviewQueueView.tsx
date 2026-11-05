@@ -1,7 +1,17 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { MistakeEntry, ExamSettings } from '../types';
 import { db } from '../db/db';
 import { processSrsReview, getTodayDateStr } from '../utils/srs';
+import {
+  sortQueueByWeakness,
+  interleaveQueue,
+  getQuick5Queue,
+  calculateWeaknessScore,
+  getDaysOverdue,
+  getConsecutiveWrongCount
+} from '../utils/reviewQueue';
+import { downloadAnkiCsv } from '../utils/ankiExport';
+import { renderFormattedContent } from './shared/QuestionRenderer';
 import { Mascot } from './Mascot';
 import confetti from 'canvas-confetti';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -20,7 +30,11 @@ import {
   Layers,
   ArrowRight,
   Zap,
-  Target
+  Target,
+  Download,
+  Shuffle,
+  Timer,
+  AlertTriangle
 } from 'lucide-react';
 
 interface ReviewQueueViewProps {
@@ -36,10 +50,20 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
 }) => {
   const todayStr = getTodayDateStr();
 
-  // Mode: 'daily-queue' or 'retry-mode'
-  const [mode, setMode] = useState<'daily-queue' | 'retry-mode'>('daily-queue');
+  // Mode: 'daily-queue' | 'retry-mode' | 'quick-5'
+  const [mode, setMode] = useState<'daily-queue' | 'retry-mode' | 'quick-5'>('daily-queue');
   const [retryFilterType, setRetryFilterType] = useState<'topic' | 'errorType'>('topic');
   const [retryFilterValue, setRetryFilterValue] = useState<string>('');
+
+  // Interleaved Mode Toggle
+  const [isInterleaved, setIsInterleaved] = useState<boolean>(true);
+
+  // Quick 5 blitz timer and tally
+  const [quick5Seconds, setQuick5Seconds] = useState<number>(0);
+  const [quick5Tally, setQuick5Tally] = useState<{ gotIt: number; stillWrong: number }>({
+    gotIt: 0,
+    stillWrong: 0
+  });
 
   // Queue state
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -49,21 +73,62 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
   const [justMastered, setJustMastered] = useState(false);
 
   // Compute Daily Queue items: due today or earlier, not mastered
-  const dailyQueue = mistakes.filter((m) => {
-    return m.status !== 'Mastered' && m.nextReviewDate <= todayStr;
-  });
+  const rawDailyQueue = useMemo(() => {
+    return mistakes.filter((m) => {
+      return m.status !== 'Mastered' && m.nextReviewDate <= todayStr;
+    });
+  }, [mistakes, todayStr]);
+
+  // Weakness-weighted sorted queue:
+  // (a) high weight, (b) high consecutive wrong, (c) overdue review date
+  const weaknessSortedQueue = useMemo(() => {
+    return sortQueueByWeakness(rawDailyQueue, todayStr);
+  }, [rawDailyQueue, todayStr]);
+
+  // Interleaved queue: mix questions across subjects rather than blocking by single topic
+  const interleavedQueue = useMemo(() => {
+    if (isInterleaved) {
+      return interleaveQueue(weaknessSortedQueue);
+    }
+    return weaknessSortedQueue;
+  }, [weaknessSortedQueue, isInterleaved]);
+
+  // Quick 5 queue: top 5 questions from interleaved/weakness queue
+  const quick5Queue = useMemo(() => {
+    return getQuick5Queue(interleavedQueue);
+  }, [interleavedQueue]);
 
   // Compute Retry Mode items (excluding Mastered cards)
-  const retryQueue = mistakes.filter((m) => {
-    if (m.status === 'Mastered') return false;
-    if (!retryFilterValue) return false;
-    if (retryFilterType === 'topic') return m.topic === retryFilterValue;
-    if (retryFilterType === 'errorType') return m.errorTypes.includes(retryFilterValue);
-    return false;
-  });
+  const retryQueue = useMemo(() => {
+    return mistakes.filter((m) => {
+      if (m.status === 'Mastered') return false;
+      if (!retryFilterValue) return false;
+      if (retryFilterType === 'topic') return m.topic === retryFilterValue;
+      if (retryFilterType === 'errorType') return m.errorTypes.includes(retryFilterValue);
+      return false;
+    });
+  }, [mistakes, retryFilterValue, retryFilterType]);
 
-  const activeQueue = mode === 'daily-queue' ? dailyQueue : retryQueue;
+  const activeQueue = mode === 'daily-queue'
+    ? interleavedQueue
+    : mode === 'quick-5'
+      ? quick5Queue
+      : retryQueue;
+
   const currentCard = activeQueue[currentIndex];
+
+  // Quick 5 timer tick
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+    if (mode === 'quick-5' && activeQueue.length > 0) {
+      interval = setInterval(() => {
+        setQuick5Seconds((s) => s + 1);
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [mode, activeQueue.length]);
 
   // Set default retry filter value
   useEffect(() => {
@@ -86,6 +151,13 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
       await db.mistakes.update(currentCard.id, updates);
 
       setReviewedSessionCount((c) => c + 1);
+      if (mode === 'quick-5') {
+        setQuick5Tally((t) => ({
+          gotIt: outcome === 'got-it' ? t.gotIt + 1 : t.gotIt,
+          stillWrong: outcome === 'still-wrong' ? t.stillWrong + 1 : t.stillWrong
+        }));
+      }
+
       if (updates.status === 'Mastered') {
         setMasteredSessionCount((c) => c + 1);
         setJustMastered(true);
@@ -109,7 +181,7 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
         });
       }
     },
-    [currentCard, onRefresh, activeQueue.length]
+    [currentCard, onRefresh, activeQueue.length, mode]
   );
 
   // Keyboard Shortcuts: Space/Enter = Reveal, '1' = Got it, '2' = Still wrong
@@ -141,6 +213,12 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [currentCard, isRevealed, handleReviewAction]);
 
+  const formatTimer = (totalSeconds: number): string => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-12">
       {/* Top Header & Mode Toggle */}
@@ -159,43 +237,109 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
           </p>
         </div>
 
-        {/* Mode Switcher */}
-        <div className="flex p-1 rounded-xl bg-[var(--surface-tag)] border-2 border-[var(--ink-border)] text-xs font-bold">
+        {/* Action Controls: Export Anki + Mode Switcher */}
+        <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={() => {
-              setMode('daily-queue');
-              setIsRevealed(false);
-              setCurrentIndex(0);
-            }}
-            className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
-              mode === 'daily-queue'
-                ? 'bg-[var(--card-bg)] text-[var(--ink-border)] shadow-manga-sm'
-                : 'text-[var(--ink-muted)] hover:text-[var(--ink-border)]'
-            }`}
+            onClick={() => downloadAnkiCsv(mistakes)}
+            className="px-3 py-1.5 rounded-xl border-2 border-[var(--ink-border)] bg-[var(--card-bg)] hover:bg-[var(--surface-tag)] text-[var(--ink-border)] text-xs font-bold shadow-manga-sm flex items-center gap-1.5 transition-all"
+            title="Export review deck to Anki-compatible CSV"
           >
-            <span>Daily Queue</span>
-            {dailyQueue.length > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full bg-[var(--accent-sakura)] text-[var(--ink-border)] text-[10px] font-black">
-                {dailyQueue.length}
-              </span>
-            )}
+            <Download className="w-3.5 h-3.5" />
+            <span>Export Anki CSV</span>
           </button>
-          <button
-            onClick={() => {
-              setMode('retry-mode');
-              setIsRevealed(false);
-              setCurrentIndex(0);
-            }}
-            className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
-              mode === 'retry-mode'
-                ? 'bg-[var(--card-bg)] text-[var(--ink-border)] shadow-manga-sm'
-                : 'text-[var(--ink-muted)] hover:text-[var(--ink-border)]'
-            }`}
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Targeted Retry</span>
-          </button>
+
+          <div className="flex p-1 rounded-xl bg-[var(--surface-tag)] border-2 border-[var(--ink-border)] text-xs font-bold">
+            <button
+              onClick={() => {
+                setMode('daily-queue');
+                setIsRevealed(false);
+                setCurrentIndex(0);
+              }}
+              className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                mode === 'daily-queue'
+                  ? 'bg-[var(--card-bg)] text-[var(--ink-border)] shadow-manga-sm'
+                  : 'text-[var(--ink-muted)] hover:text-[var(--ink-border)]'
+              }`}
+            >
+              <span>Daily Queue</span>
+              {rawDailyQueue.length > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-[var(--accent-sakura)] text-[var(--ink-border)] text-[10px] font-black">
+                  {rawDailyQueue.length}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => {
+                setMode('quick-5');
+                setIsRevealed(false);
+                setCurrentIndex(0);
+                setQuick5Seconds(0);
+                setQuick5Tally({ gotIt: 0, stillWrong: 0 });
+              }}
+              className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                mode === 'quick-5'
+                  ? 'bg-[var(--card-bg)] text-[var(--ink-border)] shadow-manga-sm'
+                  : 'text-[var(--ink-muted)] hover:text-[var(--ink-border)]'
+              }`}
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-500" />
+              <span>Quick 5</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setMode('retry-mode');
+                setIsRevealed(false);
+                setCurrentIndex(0);
+              }}
+              className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                mode === 'retry-mode'
+                  ? 'bg-[var(--card-bg)] text-[var(--ink-border)] shadow-manga-sm'
+                  : 'text-[var(--ink-muted)] hover:text-[var(--ink-border)]'
+              }`}
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Targeted Retry</span>
+            </button>
+          </div>
         </div>
+      </div>
+
+      {/* Sub-bar: Interleaving Toggle & Quick 5 Timer */}
+      <div className="flex flex-wrap items-center justify-between gap-3 text-xs bg-[var(--card-bg)] p-3 rounded-xl border-2 border-[var(--ink-border)] shadow-manga-sm">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsInterleaved(!isInterleaved)}
+            className={`px-3 py-1 rounded-lg text-xs font-bold border-2 border-[var(--ink-border)] flex items-center gap-1.5 transition-all ${
+              isInterleaved
+                ? 'bg-[var(--accent-mint)]/30 text-[var(--ink-border)] shadow-manga-sm'
+                : 'bg-[var(--surface-tag)] text-[var(--ink-muted)]'
+            }`}
+            title="Interleaved review mode mixes questions across subjects rather than blocking by single topic"
+          >
+            <Shuffle className="w-3.5 h-3.5" />
+            <span>Interleaved Mode: {isInterleaved ? 'ON' : 'OFF'}</span>
+          </button>
+          <span className="text-[11px] text-[var(--ink-muted)] hidden sm:inline">
+            Weakness-sorted (high weight + failing + overdue first)
+          </span>
+        </div>
+
+        {mode === 'quick-5' && (
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1 font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/30">
+              <Timer className="w-3.5 h-3.5 animate-pulse" />
+              <span>{formatTimer(quick5Seconds)}</span>
+              <span className="text-[10px] text-[var(--ink-muted)]">/ 10:00 max</span>
+            </span>
+            <div className="text-[11px] font-mono">
+              <span className="text-emerald-600 font-bold">{quick5Tally.gotIt} ✓</span>
+              <span className="text-[var(--ink-muted)] mx-1">|</span>
+              <span className="text-rose-600 font-bold">{quick5Tally.stillWrong} ✗</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Retry Filter Bar when in Retry Mode */}
@@ -277,16 +421,20 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
             <h3 className="font-display text-lg font-bold text-[var(--ink-border)]">
               {mistakes.length === 0
                 ? 'No Mistakes Logged Yet'
-                : mode === 'daily-queue'
-                ? 'Quest Complete For Today!'
-                : `No More Mistakes Found in "${retryFilterValue}"`}
+                : mode === 'quick-5'
+                  ? 'Quick 5 Blitz Complete!'
+                  : mode === 'daily-queue'
+                    ? 'Quest Complete For Today!'
+                    : `No More Mistakes Found in "${retryFilterValue}"`}
             </h3>
             <p className="text-xs text-[var(--ink-muted)] max-w-md mx-auto mt-1 leading-relaxed">
               {mistakes.length === 0
                 ? 'Log mistakes from your mocks or paper attempts to unlock your personalized Spaced Repetition queue.'
-                : mode === 'daily-queue'
-                ? 'All scheduled cards reviewed! Next reviews will unlock automatically based on your retention intervals (1, 3, 7, 14, 30 days).'
-                : 'Try switching to another topic or error type to keep drilling.'}
+                : mode === 'quick-5'
+                  ? `Completed 5-question blitz in ${formatTimer(quick5Seconds)}. Result: ${quick5Tally.gotIt} recalled, ${quick5Tally.stillWrong} need review.`
+                  : mode === 'daily-queue'
+                    ? 'All scheduled cards reviewed! Next reviews will unlock automatically based on your retention intervals (1, 3, 7, 14, 30 days).'
+                    : 'Try switching to another topic or error type to keep drilling.'}
             </p>
           </div>
 
@@ -296,17 +444,34 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
             </div>
           )}
 
-          {mistakes.length > 0 && mode === 'daily-queue' && (
-            <div className="pt-2 flex justify-center gap-3">
-              <button
-                onClick={() => {
-                  setMode('retry-mode');
-                  setIsRevealed(false);
-                }}
-                className="px-5 py-2.5 rounded-xl border-2 border-[var(--ink-border)] bg-[var(--accent-sakura)] text-[var(--ink-border)] text-xs font-bold shadow-manga-sm hover:-translate-y-0.5 transition-all"
-              >
-                Practice in Targeted Retry Mode
-              </button>
+          {mistakes.length > 0 && (
+            <div className="pt-2 flex flex-wrap justify-center gap-3">
+              {mode !== 'quick-5' && (
+                <button
+                  onClick={() => {
+                    setMode('quick-5');
+                    setIsRevealed(false);
+                    setCurrentIndex(0);
+                    setQuick5Seconds(0);
+                    setQuick5Tally({ gotIt: 0, stillWrong: 0 });
+                  }}
+                  className="px-5 py-2.5 rounded-xl border-2 border-[var(--ink-border)] bg-[var(--accent-sakura)] text-[var(--ink-border)] text-xs font-bold shadow-manga-sm hover:-translate-y-0.5 transition-all flex items-center gap-2"
+                >
+                  <Zap className="w-4 h-4 text-amber-500" />
+                  <span>Start a Quick 5 Blitz</span>
+                </button>
+              )}
+              {mode !== 'retry-mode' && (
+                <button
+                  onClick={() => {
+                    setMode('retry-mode');
+                    setIsRevealed(false);
+                  }}
+                  className="px-5 py-2.5 rounded-xl border-2 border-[var(--ink-border)] bg-[var(--surface-tag)] text-[var(--ink-border)] text-xs font-bold shadow-manga-sm hover:-translate-y-0.5 transition-all"
+                >
+                  Practice in Targeted Retry Mode
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -315,12 +480,24 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
           {/* Progress Banner & Keyboard Shortcuts Pill */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
             <div className="flex items-center gap-2 text-[var(--ink-muted)]">
-              <span className="font-bold">Card 1 of {activeQueue.length}</span>
+              <span className="font-bold">
+                {mode === 'quick-5' ? `Blitz Card 1 of ${activeQueue.length}` : `Card 1 of ${activeQueue.length}`}
+              </span>
               <span>•</span>
               <span className="flex items-center gap-1 text-amber-500 font-bold">
                 <Flame className="w-4 h-4 fill-amber-500 text-amber-500" />
                 <span>{currentCard.consecutiveCorrect || 0} / 3 to Defeat</span>
               </span>
+              {getDaysOverdue(currentCard.nextReviewDate, todayStr) > 0 && (
+                <span className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-600 font-bold text-[10px] border border-rose-500/30">
+                  {getDaysOverdue(currentCard.nextReviewDate, todayStr)}d Overdue
+                </span>
+              )}
+              {getConsecutiveWrongCount(currentCard) > 1 && (
+                <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-600 font-bold text-[10px] border border-amber-500/30">
+                  {getConsecutiveWrongCount(currentCard)}x Consecutive Wrong
+                </span>
+              )}
             </div>
 
             {/* Keyboard shortcut guide */}
@@ -374,9 +551,9 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
                   <span className="text-[11px] font-black tracking-wider uppercase text-[var(--ink-muted)]">
                     QUESTION PROMPT
                   </span>
-                  <p className="text-sm text-[var(--ink-border)] leading-relaxed font-bold whitespace-pre-wrap">
-                    {currentCard.questionText}
-                  </p>
+                  <div className="text-sm text-[var(--ink-border)] leading-relaxed font-bold">
+                    {renderFormattedContent(currentCard.questionText)}
+                  </div>
 
                   {currentCard.questionImage && (
                     <div className="mt-3 rounded-xl overflow-hidden border-2 border-[var(--ink-border)] max-w-xl mx-auto shadow-manga-sm">
@@ -448,9 +625,9 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
                       <div className="font-display font-bold text-[var(--accent-twilight)] text-[11px]">
                         CORRECT SOLUTION:
                       </div>
-                      <p className="text-[var(--ink-border)] font-medium leading-relaxed whitespace-pre-wrap">
-                        {currentCard.correctSolution}
-                      </p>
+                      <div className="text-[var(--ink-border)] font-medium leading-relaxed">
+                        {renderFormattedContent(currentCard.correctSolution)}
+                      </div>
                     </div>
 
                     {/* Better Approach / Shortcut */}
@@ -458,9 +635,9 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
                       <div className="font-display font-bold text-emerald-700 dark:text-emerald-400 text-[11px]">
                         BETTER APPROACH / SHORTCUT:
                       </div>
-                      <p className="text-[var(--ink-border)] font-medium leading-relaxed">
-                        {currentCard.betterApproach}
-                      </p>
+                      <div className="text-[var(--ink-border)] font-medium leading-relaxed">
+                        {renderFormattedContent(currentCard.betterApproach)}
+                      </div>
                     </div>
 
                     {/* Rule to Remember Highlight */}
