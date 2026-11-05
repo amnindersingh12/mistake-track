@@ -1,15 +1,16 @@
 {
   "0": "index.ts",
-  "5": "test_visual_qa.cjs",
+  "5": "ref_fs",
   "11": "package.json",
-  "13": "ref_path",
-  "16": "vitest",
+  "13": "xpEngine.ts",
+  "16": "mockValidation.ts",
   "17": "exportImport.ts",
   "30": "@testing-library/react",
   "32": "ScreenshotInput.tsx",
-  "33": "puppeteer-core",
+  "33": "AmbientAudioSynthesizer",
   "34": "QuestionRenderer.tsx",
-  "35": "@types/katex@^0.16.8",
+  "35": "package.json",
   "42": "bookmarklet.js",
-  "43": "tailwind.config.js"
+  "43": "tailwind.config.js",
+  "44": "@testing-library/user-event@^14.6.8"
 }
