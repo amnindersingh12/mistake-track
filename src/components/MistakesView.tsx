@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { MistakeEntry, MockTest, PaperTest, ExamSettings, ResultType, Difficulty, MistakeStatus } from '../types';
+import { MistakeEntry, MockTest, PaperTest, ExamSettings, ResultType, Difficulty, MistakeStatus, QuestionType, CS_ERROR_TYPES } from '../types';
 import { db } from '../db/db';
 import { exportMistakesAsCsv } from '../utils/exportImport';
 import { getTodayDateStr } from '../utils/srs';
 import { Mascot } from './Mascot';
 import { ScreenshotInput } from './ScreenshotInput';
+import { QuestionRenderer, renderFormattedContent } from './shared/QuestionRenderer';
 import {
   Plus,
   Zap,
@@ -98,6 +99,7 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
   const [filterSection, setFilterSection] = useState<string>('all');
   const [filterTopic, setFilterTopic] = useState<string>('all');
   const [filterErrorType, setFilterErrorType] = useState<string>('all');
+  const [filterQuestionType, setFilterQuestionType] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterResultType, setFilterResultType] = useState<string>('all');
   const [filterSource, setFilterSource] = useState<string>(initialMockFilter ? `mock:${initialMockFilter}` : 'all');
@@ -105,6 +107,11 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
   const [filterTag, setFilterTag] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'date-desc' | 'date-asc' | 'time-desc' | 'diff'>('date-desc');
   const [tagsStr, setTagsStr] = useState('');
+
+  // All available error types combining CS_ERROR_TYPES and exam settings
+  const allAvailableErrorTypes = Array.from(
+    new Set([...CS_ERROR_TYPES, ...(settings.errorTypes || [])])
+  );
 
   // Preview Image Modal
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -152,6 +159,14 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
   const [questionNumber, setQuestionNumber] = useState<number>(1);
   const [questionText, setQuestionText] = useState('');
   const [questionImage, setQuestionImage] = useState<string | undefined>(undefined);
+  const [questionType, setQuestionType] = useState<QuestionType>('MCQ');
+  const [natAnswer, setNatAnswer] = useState<number | undefined>(undefined);
+  const [correctNatMin, setCorrectNatMin] = useState<string>('');
+  const [correctNatMax, setCorrectNatMax] = useState<string>('');
+  const [natTolerance, setNatTolerance] = useState<number | undefined>(undefined);
+  const [msqWrongStr, setMsqWrongStr] = useState<string>('');
+  const [msqMissedStr, setMsqMissedStr] = useState<string>('');
+  const [showModalPreview, setShowModalPreview] = useState(false);
   const [myAnswer, setMyAnswer] = useState('');
   const [correctAnswer, setCorrectAnswer] = useState('');
   const [resultType, setResultType] = useState<ResultType>('Wrong');
@@ -217,6 +232,14 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
     setQuestionNumber(mistakes.length + 1);
     setQuestionText('');
     setQuestionImage(undefined);
+    setQuestionType('MCQ');
+    setNatAnswer(undefined);
+    setCorrectNatMin('');
+    setCorrectNatMax('');
+    setNatTolerance(undefined);
+    setMsqWrongStr('');
+    setMsqMissedStr('');
+    setShowModalPreview(false);
     setMyAnswer('');
     setCorrectAnswer('');
     setResultType('Wrong');
@@ -243,6 +266,22 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
     setQuestionNumber(m.questionNumber);
     setQuestionText(m.questionText);
     setQuestionImage(m.questionImage);
+    setQuestionType(m.questionType || 'MCQ');
+    setNatAnswer(m.natAnswer);
+    if (typeof m.correctNatAnswer === 'number') {
+      setCorrectNatMin(String(m.correctNatAnswer));
+      setCorrectNatMax('');
+    } else if (m.correctNatAnswer) {
+      setCorrectNatMin(String(m.correctNatAnswer.min));
+      setCorrectNatMax(String(m.correctNatAnswer.max));
+    } else {
+      setCorrectNatMin('');
+      setCorrectNatMax('');
+    }
+    setNatTolerance(m.natTolerance);
+    setMsqWrongStr((m.msqWrongOptions || []).join(', '));
+    setMsqMissedStr((m.msqMissedOptions || []).join(', '));
+    setShowModalPreview(false);
     setMyAnswer(m.myAnswer);
     setCorrectAnswer(m.correctAnswer);
     setResultType(m.resultType);
@@ -271,6 +310,15 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
     const preserveReview = Boolean(existing && !resetReviewSchedule);
     const parsedTags = tagsStr.split(',').map((t) => t.trim()).filter(Boolean);
 
+    let computedCorrectNat: { min: number; max: number } | number | undefined = undefined;
+    if (correctNatMin !== '' && correctNatMax !== '') {
+      computedCorrectNat = { min: Number(correctNatMin), max: Number(correctNatMax) };
+    } else if (correctNatMin !== '') {
+      computedCorrectNat = Number(correctNatMin);
+    }
+    const parsedMsqWrong = msqWrongStr.split(',').map((s) => s.trim()).filter(Boolean);
+    const parsedMsqMissed = msqMissedStr.split(',').map((s) => s.trim()).filter(Boolean);
+
     const payload: Omit<MistakeEntry, 'id'> = {
       mockId: mock?.id,
       paperId: paper?.id,
@@ -284,6 +332,12 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
       questionNumber: Number(questionNumber) || 1,
       questionText: questionText.trim() || 'Question not transcribed.',
       questionImage,
+      questionType,
+      natAnswer: natAnswer !== undefined && !isNaN(natAnswer) ? natAnswer : undefined,
+      correctNatAnswer: computedCorrectNat,
+      natTolerance: natTolerance !== undefined && !isNaN(natTolerance) ? natTolerance : undefined,
+      msqWrongOptions: parsedMsqWrong.length > 0 ? parsedMsqWrong : undefined,
+      msqMissedOptions: parsedMsqMissed.length > 0 ? parsedMsqMissed : undefined,
       myAnswer: myAnswer.trim() || 'N/A',
       correctAnswer: correctAnswer.trim() || 'N/A',
       resultType,
@@ -377,6 +431,11 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
       if (filterSection !== 'all' && m.sectionId !== filterSection) return false;
       if (filterTopic !== 'all' && m.topic !== filterTopic) return false;
       if (filterErrorType !== 'all' && !m.errorTypes.includes(filterErrorType)) return false;
+      if (filterQuestionType !== 'all') {
+        const parsed = parseQuestionTextAndOptions(m.questionText);
+        const qType = m.questionType || (parsed.options.length > 0 ? 'MCQ' : 'descriptive');
+        if (qType !== filterQuestionType) return false;
+      }
       if (filterStatus !== 'all' && m.status !== filterStatus) return false;
       if (filterResultType !== 'all' && m.resultType !== filterResultType) return false;
       if (filterSource !== 'all') {
@@ -541,10 +600,25 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
               className="text-xs px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-bold"
             >
               <option value="all">All Error Types</option>
-              {settings.errorTypes.map((et) => (
+              {allAvailableErrorTypes.map((et) => (
                 <option key={et} value={et}>{et}</option>
               ))}
-              <option value="Unclassified">Unclassified</option>
+              {!allAvailableErrorTypes.includes('Unclassified') && (
+                <option value="Unclassified">Unclassified</option>
+              )}
+            </select>
+
+            <select
+              aria-label="Filter by question type"
+              value={filterQuestionType}
+              onChange={(e) => setFilterQuestionType(e.target.value)}
+              className="text-xs px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-bold"
+            >
+              <option value="all">All Question Types</option>
+              <option value="MCQ">MCQ</option>
+              <option value="MSQ">MSQ</option>
+              <option value="NAT">NAT</option>
+              <option value="descriptive">Descriptive</option>
             </select>
 
             <select
@@ -633,13 +707,14 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
             <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
               Click Section to Filter:
             </span>
-            {(filterSection !== 'all' || filterStatus !== 'all' || filterResultType !== 'all' || filterErrorType !== 'all' || filterTopic !== 'all' || filterTag !== 'all') && (
+            {(filterSection !== 'all' || filterStatus !== 'all' || filterResultType !== 'all' || filterErrorType !== 'all' || filterTopic !== 'all' || filterTag !== 'all' || filterQuestionType !== 'all') && (
               <button
                 type="button"
                 onClick={() => {
                   setFilterSection('all');
                   setFilterTopic('all');
                   setFilterErrorType('all');
+                  setFilterQuestionType('all');
                   setFilterStatus('all');
                   setFilterResultType('all');
                   setFilterTag('all');
@@ -878,66 +953,31 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
 
                 {!isCollapsed && (
                   <>
-                    {/* Question Text, Cleaned Options (capped at 5, no 9 options bug) */}
+                    {/* Question Statement, Options, Diagram, Formulas & Solution rendered with QuestionRenderer */}
                     <div className="p-4 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] text-xs space-y-3">
-                      <p className="font-medium whitespace-pre-wrap leading-relaxed text-[var(--ink)] dark:text-[var(--text-main)]">
-                        {parsedQuestion.prompt}
-                      </p>
-
-                      {/* Display neat options grid if options were parsed (Max 5, deduplicated) */}
-                      {parsedQuestion.options.length > 0 && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-[var(--ink-border)]/30">
-                          {parsedQuestion.options.map((opt) => {
-                            const isMyAns = opt.isSelected || m.myAnswer.toLowerCase().includes(opt.text.toLowerCase()) || m.myAnswer.toLowerCase() === `option ${opt.label.toLowerCase()}` || m.myAnswer.toLowerCase() === opt.label.toLowerCase();
-                            const isCorrectAns = opt.isCorrect || m.correctAnswer.toLowerCase().includes(opt.text.toLowerCase()) || m.correctAnswer.toLowerCase() === `option ${opt.label.toLowerCase()}` || m.correctAnswer.toLowerCase() === opt.label.toLowerCase();
-
-                            return (
-                              <div
-                                key={opt.label}
-                                className={`p-2.5 rounded-xl border-2 text-xs flex items-start gap-2 transition-all ${
-                                  isCorrectAns
-                                    ? 'bg-emerald-50/70 dark:bg-emerald-950/40 border-emerald-500 text-emerald-950 dark:text-emerald-100 font-semibold'
-                                    : isMyAns
-                                    ? 'bg-rose-50/70 dark:bg-rose-950/40 border-rose-500 text-rose-950 dark:text-rose-100 font-semibold'
-                                    : 'bg-[var(--bg-panel)] border-[var(--ink-border)]/60 text-[var(--text-main)]'
-                                }`}
-                              >
-                                <span
-                                  className={`font-mono font-bold px-1.5 py-0.5 rounded text-[10px] shrink-0 ${
-                                    isCorrectAns
-                                      ? 'bg-emerald-500 text-white'
-                                      : isMyAns
-                                      ? 'bg-rose-500 text-white'
-                                      : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border border-[var(--ink-border)]'
-                                  }`}
-                                >
-                                  {opt.label}
-                                </span>
-                                <span className="flex-1 leading-snug">{opt.text}</span>
-                                {isCorrectAns && (
-                                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 shrink-0">
-                                    ✓ Correct
-                                  </span>
-                                )}
-                                {isMyAns && !isCorrectAns && (
-                                  <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 shrink-0">
-                                    ✗ Your Ans
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {m.questionImage && (
-                        <div
-                          onClick={() => setPreviewImage(m.questionImage || null)}
-                          className="cursor-pointer border border-[var(--ink-border)] rounded-lg max-h-48 overflow-hidden max-w-md"
-                        >
-                          <img src={m.questionImage} alt="Mistake screenshot" className="w-full h-full object-contain" />
-                        </div>
-                      )}
+                      <QuestionRenderer
+                        text={parsedQuestion.prompt}
+                        options={parsedQuestion.options.length > 0 ? parsedQuestion.options.map((o) => o.text) : undefined}
+                        selectedOption={
+                          m.questionType === 'MSQ' && m.msqSelectedOptions && m.msqSelectedOptions.length > 0
+                            ? m.msqSelectedOptions
+                            : m.myAnswer
+                        }
+                        correctOption={
+                          m.questionType === 'MSQ' && m.msqCorrectOptions && m.msqCorrectOptions.length > 0
+                            ? m.msqCorrectOptions
+                            : m.correctAnswer
+                        }
+                        questionType={m.questionType || (parsedQuestion.options.length > 0 ? 'MCQ' : 'descriptive')}
+                        natAnswer={m.natAnswer !== undefined ? m.natAnswer : (!isNaN(Number(m.myAnswer)) ? Number(m.myAnswer) : undefined)}
+                        correctNatAnswer={m.correctNatAnswer}
+                        natTolerance={m.natTolerance}
+                        msqWrongOptions={m.msqWrongOptions}
+                        msqMissedOptions={m.msqMissedOptions}
+                        image={m.questionImage}
+                        solution={m.correctSolution}
+                        showSolution={true}
+                      />
 
                       {/* Answer Badges */}
                       <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-[var(--ink-border)]/40 text-xs font-mono">
@@ -958,32 +998,21 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
                           <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
                           <span className="uppercase tracking-wider text-[11px]">What Went Wrong (Root Cause)</span>
                         </div>
-                        <p className="text-[var(--text-main)] font-medium leading-relaxed pl-5.5">
-                          {m.whatWentWrong}
-                        </p>
+                        <div className="text-[var(--text-main)] font-medium leading-relaxed pl-5.5">
+                          {renderFormattedContent(m.whatWentWrong)}
+                        </div>
                       </div>
 
-                      {/* Correct Solution & Methodology Card */}
-                      <div className="p-3.5 rounded-xl bg-emerald-500/10 dark:bg-emerald-950/30 border-2 border-emerald-500/40 space-y-2">
-                        <div className="flex items-center gap-1.5 font-bold text-emerald-700 dark:text-emerald-300">
-                          <Sparkles className="w-4 h-4 text-emerald-500 shrink-0" />
-                          <span className="uppercase tracking-wider text-[11px]">Correct Solution & Methodology</span>
-                        </div>
-                        <div className="text-[var(--text-main)] leading-relaxed whitespace-pre-wrap font-sans bg-[var(--bg-surface)] p-3 rounded-lg border border-emerald-500/20">
-                          {m.correctSolution || 'Refer to verified step-by-step solution.'}
-                        </div>
-
-                        {m.betterApproach && m.betterApproach !== m.correctSolution && (
-                          <div className="pt-1.5 space-y-1">
-                            <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
-                              <Zap className="w-3.5 h-3.5 text-indigo-500" /> Speed Shortcut / Alternative Approach:
-                            </span>
-                            <p className="text-[var(--text-main)] italic pl-4 border-l-2 border-indigo-400">
-                              {m.betterApproach}
-                            </p>
+                      {m.betterApproach && m.betterApproach !== m.correctSolution && (
+                        <div className="p-3.5 rounded-xl bg-indigo-500/10 dark:bg-indigo-950/30 border-2 border-indigo-500/40 space-y-1">
+                          <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+                            <Zap className="w-3.5 h-3.5 text-indigo-500" /> Speed Shortcut / Alternative Approach:
+                          </span>
+                          <div className="text-[var(--text-main)] italic pl-4 border-l-2 border-indigo-400">
+                            {renderFormattedContent(m.betterApproach)}
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      )}
 
                       {/* Rule to Remember Sticker */}
                       {m.ruleToRemember && (
@@ -994,7 +1023,7 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
                               Rule to Remember:
                             </span>
                             <span className="font-semibold text-[var(--ink)] dark:text-[var(--text-main)]">
-                              {m.ruleToRemember}
+                              {renderFormattedContent(m.ruleToRemember)}
                             </span>
                           </div>
                         </div>
@@ -1058,6 +1087,35 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
                       <option key={t} value={t}>{t}</option>
                     ))}
                   </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold mb-1">
+                  Root-Cause Error Types ({quickErrorTypes.length > 0 ? quickErrorTypes.join(', ') : 'Unclassified'})
+                </label>
+                <div className="flex flex-wrap gap-1.5 p-2 rounded-lg bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] max-h-28 overflow-y-auto">
+                  {allAvailableErrorTypes.map((et) => {
+                    const isChecked = quickErrorTypes.includes(et);
+                    return (
+                      <button
+                        type="button"
+                        key={et}
+                        onClick={() => {
+                          setQuickErrorTypes((prev) =>
+                            isChecked ? prev.filter((t) => t !== et) : [...prev, et]
+                          );
+                        }}
+                        className={`px-2 py-0.5 rounded text-[11px] font-bold border transition-all ${
+                          isChecked
+                            ? 'bg-[var(--sakura)] text-[var(--ink)] border-[var(--ink-border)] shadow-sm'
+                            : 'bg-[var(--bg-panel)] text-[var(--text-muted)] border-[var(--ink-border)]/50 hover:border-[var(--ink-border)]'
+                        }`}
+                      >
+                        {isChecked ? '✓ ' : '+ '}{et}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1189,7 +1247,21 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div>
+                  <label className="block font-bold mb-1">Question Type</label>
+                  <select
+                    aria-label="Question Type"
+                    value={questionType}
+                    onChange={(e) => setQuestionType(e.target.value as QuestionType)}
+                    className="w-full p-2 rounded-lg bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold"
+                  >
+                    <option value="MCQ">MCQ (Single Choice)</option>
+                    <option value="MSQ">MSQ (Multiple Select)</option>
+                    <option value="NAT">NAT (Numerical Answer)</option>
+                    <option value="descriptive">Descriptive / Subjective</option>
+                  </select>
+                </div>
                 <div>
                   <label className="block font-bold mb-1">Result Type</label>
                   <select
@@ -1231,6 +1303,94 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
                 </div>
               </div>
 
+              {/* Conditional MSQ Configuration */}
+              {questionType === 'MSQ' && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border-2 border-amber-500/30 space-y-2">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-600 dark:text-amber-300 text-xs">
+                    <AlertCircle className="w-4 h-4 text-amber-500" />
+                    <span>MSQ Option Diagnostics</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold mb-1 text-[11px]">Wrong Options Picked (Comma-separated)</label>
+                      <input
+                        type="text"
+                        value={msqWrongStr}
+                        onChange={(e) => setMsqWrongStr(e.target.value)}
+                        placeholder="e.g. Option B, Option D"
+                        className="w-full p-2 rounded-lg bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold mb-1 text-[11px]">Correct Options Missed (Comma-separated)</label>
+                      <input
+                        type="text"
+                        value={msqMissedStr}
+                        onChange={(e) => setMsqMissedStr(e.target.value)}
+                        placeholder="e.g. Option A"
+                        className="w-full p-2 rounded-lg bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Conditional NAT Configuration */}
+              {questionType === 'NAT' && (
+                <div className="p-3 rounded-xl bg-sky-500/10 border-2 border-sky-500/30 space-y-2">
+                  <div className="flex items-center gap-1.5 font-bold text-sky-600 dark:text-sky-300 text-xs">
+                    <Sparkles className="w-4 h-4 text-sky-500" />
+                    <span>NAT Tolerance & Range Setup</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                    <div>
+                      <label className="block font-bold mb-1 text-[11px]">Your NAT Answer</label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={natAnswer !== undefined ? natAnswer : ''}
+                        onChange={(e) => setNatAnswer(e.target.value !== '' ? Number(e.target.value) : undefined)}
+                        placeholder="e.g. 45.2"
+                        className="w-full p-2 rounded-lg bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold mb-1 text-[11px]">Target Answer / Min</label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={correctNatMin}
+                        onChange={(e) => setCorrectNatMin(e.target.value)}
+                        placeholder="e.g. 45.0"
+                        className="w-full p-2 rounded-lg bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold mb-1 text-[11px]">Range Max (Optional)</label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={correctNatMax}
+                        onChange={(e) => setCorrectNatMax(e.target.value)}
+                        placeholder="e.g. 46.0"
+                        className="w-full p-2 rounded-lg bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold mb-1 text-[11px]">Tolerance (±)</label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={natTolerance !== undefined ? natTolerance : ''}
+                        onChange={(e) => setNatTolerance(e.target.value !== '' ? Number(e.target.value) : undefined)}
+                        placeholder="e.g. 0.5"
+                        className="w-full p-2 rounded-lg bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-semibold"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold mb-1">Time Spent (Seconds)</label>
@@ -1258,8 +1418,8 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
                 <label className="block font-bold mb-1">
                   Root-Cause Error Types ({selectedErrorTypes.length > 0 ? selectedErrorTypes.join(', ') : 'Unclassified'})
                 </label>
-                <div className="flex flex-wrap gap-2 p-2.5 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)]">
-                  {settings.errorTypes.map((et) => {
+                <div className="flex flex-wrap gap-2 p-2.5 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] max-h-48 overflow-y-auto">
+                  {allAvailableErrorTypes.map((et) => {
                     const isChecked = selectedErrorTypes.includes(et);
                     return (
                       <button
@@ -1286,11 +1446,20 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="font-bold">Question Statement & Screenshot</label>
-                  <label className="text-[11px] text-[var(--sakura)] font-bold cursor-pointer hover:underline flex items-center gap-1">
-                    <ImageIcon className="w-3.5 h-3.5" />
-                    <span>Attach Screenshot File</span>
-                    <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
-                  </label>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowModalPreview(!showModalPreview)}
+                      className="text-[11px] text-[var(--action-primary)] font-bold hover:underline cursor-pointer"
+                    >
+                      {showModalPreview ? 'Hide Live Preview' : 'Show Live Preview'}
+                    </button>
+                    <label className="text-[11px] text-[var(--sakura)] font-bold cursor-pointer hover:underline flex items-center gap-1">
+                      <ImageIcon className="w-3.5 h-3.5" />
+                      <span>Attach Screenshot File</span>
+                      <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                    </label>
+                  </div>
                 </div>
                 <textarea
                   rows={3}
@@ -1300,6 +1469,33 @@ export const MistakesView: React.FC<MistakesViewProps> = ({
                   className="w-full p-2.5 rounded-xl bg-[var(--bg-surface)] border-2 border-[var(--ink-border)] font-medium"
                 />
                 <ScreenshotInput value={questionImage} onChange={setQuestionImage} />
+
+                {/* Optional Live Preview inside Modal */}
+                {showModalPreview && (
+                  <div className="mt-3 p-3.5 rounded-xl border-2 border-[var(--ink-border)] bg-[var(--bg-surface)]">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2">
+                      Live Question Preview:
+                    </div>
+                    <QuestionRenderer
+                      text={questionText || 'Question statement preview...'}
+                      questionType={questionType}
+                      image={questionImage}
+                      natAnswer={natAnswer}
+                      correctNatAnswer={
+                        correctNatMin !== ''
+                          ? correctNatMax !== ''
+                            ? { min: Number(correctNatMin), max: Number(correctNatMax) }
+                            : Number(correctNatMin)
+                          : undefined
+                      }
+                      natTolerance={natTolerance}
+                      msqWrongOptions={msqWrongStr.split(',').map((s) => s.trim()).filter(Boolean)}
+                      msqMissedOptions={msqMissedStr.split(',').map((s) => s.trim()).filter(Boolean)}
+                      solution={correctSolution}
+                      showSolution={true}
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">

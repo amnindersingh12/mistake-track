@@ -240,4 +240,149 @@ describe('MistakesView - Capture, Filters, Review State & Sorting', () => {
     expect(quickCreated?.errorTypes).toEqual(['Unclassified']);
     expect(quickCreated?.status).toBe('New');
   });
+
+  it('filters mistakes by question type (MCQ, MSQ, NAT, descriptive)', () => {
+    const onRefresh = vi.fn();
+    const typedMistakes: MistakeEntry[] = [
+      {
+        ...sampleMistakes[0],
+        id: 101,
+        questionType: 'MCQ',
+        questionText: 'Which data structure is LIFO?'
+      },
+      {
+        ...sampleMistakes[0],
+        id: 102,
+        questionType: 'MSQ',
+        questionText: 'Select all NP-complete problems in the following list.'
+      },
+      {
+        ...sampleMistakes[0],
+        id: 103,
+        questionType: 'NAT',
+        questionText: 'Calculate the total number of page faults with FIFO.'
+      }
+    ];
+
+    render(
+      <MistakesView
+        mistakes={typedMistakes}
+        mocks={sampleMocks}
+        settings={mockSettings}
+        onRefresh={onRefresh}
+      />
+    );
+
+    // Initial: all visible
+    expect(screen.getByText(/Which data structure is LIFO\?/i)).toBeInTheDocument();
+    expect(screen.getByText(/Select all NP-complete problems/i)).toBeInTheDocument();
+    expect(screen.getByText(/Calculate the total number of page faults/i)).toBeInTheDocument();
+
+    // Filter by MSQ
+    const qTypeSelect = screen.getByRole('combobox', { name: /Filter by question type/i });
+    fireEvent.change(qTypeSelect, { target: { value: 'MSQ' } });
+
+    expect(screen.queryByText(/Which data structure is LIFO\?/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Select all NP-complete problems/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Calculate the total number of page faults/i)).not.toBeInTheDocument();
+
+    // Filter by NAT
+    fireEvent.change(qTypeSelect, { target: { value: 'NAT' } });
+    expect(screen.queryByText(/Select all NP-complete problems/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Calculate the total number of page faults/i)).toBeInTheDocument();
+  });
+
+  it('renders CS_ERROR_TYPES as selectable pills and saves multi-selected error types', async () => {
+    const onRefresh = vi.fn();
+    render(
+      <MistakesView
+        mistakes={sampleMistakes}
+        mocks={sampleMocks}
+        settings={mockSettings}
+        onRefresh={onRefresh}
+      />
+    );
+
+    // Open Full Add Modal
+    const addBtn = screen.getByRole('button', { name: /Log Mistake/i });
+    fireEvent.click(addBtn);
+
+    // Verify CS error type pills are present
+    expect(screen.getByRole('button', { name: /\+ Trace\/execution error/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /\+ Misread constraint/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /\+ Missed MSQ option/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /\+ NAT calculation slip/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /\+ Overthinking/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /\+ Trick not known/i })).toBeInTheDocument();
+
+    // Multi-select error types: click "Trace/execution error" and "Misread constraint"
+    fireEvent.click(screen.getByRole('button', { name: /\+ Trace\/execution error/i }));
+    fireEvent.click(screen.getByRole('button', { name: /\+ Misread constraint/i }));
+
+    // Both should now show checked
+    expect(screen.getByRole('button', { name: /✓ Trace\/execution error/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /✓ Misread constraint/i })).toBeInTheDocument();
+
+    // Fill form and save
+    fireEvent.change(screen.getByPlaceholderText(/e\.g\. Option B/i), { target: { value: 'Stack' } });
+    fireEvent.change(screen.getByPlaceholderText(/e\.g\. Option C/i), { target: { value: 'Queue' } });
+    fireEvent.change(screen.getByPlaceholderText(/e\.g\. Misread 72 km\/h/i), { target: { value: 'Traced loop bounds wrongly.' } });
+    fireEvent.change(screen.getByPlaceholderText(/e\.g\. Speed in km\/h/i), { target: { value: 'Always check strict vs non-strict inequalities.' } });
+
+    const submitBtn = screen.getByRole('button', { name: /Save Mistake/i });
+    await act(async () => {
+      fireEvent.click(submitBtn);
+      await new Promise((r) => setTimeout(r, 60));
+    });
+
+    const mistakes = await db.mistakes.toArray();
+    const saved = mistakes.find((m) => m.ruleToRemember === 'Always check strict vs non-strict inequalities.');
+    expect(saved).toBeDefined();
+    expect(saved?.errorTypes).toContain('Trace/execution error');
+    expect(saved?.errorTypes).toContain('Misread constraint');
+  });
+
+  it('saves and renders MSQ with QuestionRenderer diagnostics', async () => {
+    const onRefresh = vi.fn();
+    render(
+      <MistakesView
+        mistakes={sampleMistakes}
+        mocks={sampleMocks}
+        settings={mockSettings}
+        onRefresh={onRefresh}
+      />
+    );
+
+    // Open Full Add Modal
+    const addBtn = screen.getByRole('button', { name: /Log Mistake/i });
+    fireEvent.click(addBtn);
+
+    // Choose Question Type: MSQ
+    const qTypeSelect = screen.getByRole('combobox', { name: /^Question Type$/i });
+    fireEvent.change(qTypeSelect, { target: { value: 'MSQ' } });
+
+    // Diagnostic fields appear
+    expect(screen.getByText(/MSQ Option Diagnostics/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText(/e\.g\. Option B, Option D/i), { target: { value: 'Option C' } });
+    fireEvent.change(screen.getByPlaceholderText(/e\.g\. Option A/i), { target: { value: 'Option B' } });
+
+    // Fill required fields
+    fireEvent.change(screen.getByPlaceholderText(/e\.g\. Option B \(45 km\/h\)/i), { target: { value: 'A, C' } });
+    fireEvent.change(screen.getByPlaceholderText(/e\.g\. Option C \(54 km\/h\)/i), { target: { value: 'A, B' } });
+    fireEvent.change(screen.getByPlaceholderText(/e\.g\. Misread 72 km\/h/i), { target: { value: 'Missed option B.' } });
+    fireEvent.change(screen.getByPlaceholderText(/e\.g\. Speed in km\/h/i), { target: { value: 'Verify each MSQ option independently.' } });
+
+    const submitBtn = screen.getByRole('button', { name: /Save Mistake/i });
+    await act(async () => {
+      fireEvent.click(submitBtn);
+      await new Promise((r) => setTimeout(r, 60));
+    });
+
+    const mistakes = await db.mistakes.toArray();
+    const msqEntry = mistakes.find((m) => m.ruleToRemember === 'Verify each MSQ option independently.');
+    expect(msqEntry).toBeDefined();
+    expect(msqEntry?.questionType).toBe('MSQ');
+    expect(msqEntry?.msqWrongOptions).toEqual(['Option C']);
+    expect(msqEntry?.msqMissedOptions).toEqual(['Option B']);
+  });
 });
