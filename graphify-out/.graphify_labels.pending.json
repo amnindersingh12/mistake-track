@@ -1,12 +1,10 @@
 {
   "0": "db/db.ts",
   "5": "test_visual_qa.cjs",
-  "11": "devDependencies",
+  "11": "package.json",
   "13": "ref_path",
-  "16": "package.json",
-  "17": "postcss@^8.5.3",
-  "32": "react",
-  "33": "@types/node@^22.13.10",
+  "16": "vitest",
+  "32": "ScreenshotInput.tsx",
   "42": "bookmarklet.js",
   "43": "tailwind.config.js"
 }
