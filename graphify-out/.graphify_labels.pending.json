@@ -1,16 +1,14 @@
 {
   "0": "index.ts",
-  "5": "test_visual_qa.cjs",
+  "5": "ref_fs",
   "11": "package.json",
-  "12": "vitest",
-  "13": "ref_path",
-  "16": "MocksView.tsx",
+  "13": "typescript@^5.8.2",
+  "16": "vitest",
   "17": "exportImport.ts",
-  "19": "markingEngine.ts",
-  "30": "@testing-library/react",
-  "32": "MistakeEntry",
+  "32": "ExamSettings",
   "33": "puppeteer-core",
-  "34": "tsx@^4.23.15",
+  "34": "QuestionRenderer.tsx",
+  "35": "package.json",
   "42": "bookmarklet.js",
   "43": "tailwind.config.js"
 }
