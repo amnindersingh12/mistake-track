@@ -26,5 +26,7 @@ jobs:
         run: npm test
       - name: Type-check and build
         run: npm run build
-      - name: Audit (high and critical only)
+      - name: Audit production deps (fail on high/critical)
         run: npm audit --audit-level=high --omit=dev
+      - name: Audit all deps (report only)
+        run: npm audit || true
